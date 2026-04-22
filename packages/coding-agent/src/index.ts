@@ -220,6 +220,8 @@ export {
 // Skills
 export {
 	formatSkillsForPrompt,
+	type FormatSkillsForPromptOptions,
+	skillPromptSegmentId,
 	type LoadSkillsFromDirOptions,
 	type LoadSkillsResult,
 	loadSkills,

@@ -253,9 +253,10 @@ async function streamAssistantResponse(
 	// Convert to LLM-compatible messages (AgentMessage[] → Message[])
 	const llmMessages = await config.convertToLlm(messages);
 
-	// Build LLM context
+	// Build LLM context (prefer live system prompt so mid-run tool updates are visible)
+	const systemPrompt = config.getLiveSystemPrompt?.() ?? context.systemPrompt;
 	const llmContext: Context = {
-		systemPrompt: context.systemPrompt,
+		systemPrompt,
 		messages: llmMessages,
 		tools: context.tools,
 	};

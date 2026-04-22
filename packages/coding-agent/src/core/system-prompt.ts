@@ -80,8 +80,6 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	const toolsSection = `Available tools:\n${toolsList}`;
 	const dontDestroySection = formatDontDestroySection(dontDestroyNotes);
 
-	const hasRead = tools.includes("read");
-
 	if (customPrompt) {
 		let soul = customPrompt;
 
@@ -98,9 +96,9 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 			}
 		}
 
-		// Append skills section (only if read tool is available)
-		if (hasRead && skills.length > 0) {
-			soul += formatSkillsForPrompt(skills);
+		// Append loaded skills (skills_context); not gated on read — load is the mechanism
+		if (skills.length > 0) {
+			soul += formatSkillsForPrompt(skills, { embedBodies: true });
 		}
 
 		// Add date and working directory last
@@ -181,9 +179,9 @@ Pi documentation (read only when the user asks about pi itself, its SDK, extensi
 		}
 	}
 
-	// Append skills section (only if read tool is available)
-	if (hasRead && skills.length > 0) {
-		soul += formatSkillsForPrompt(skills);
+	// Append loaded skills (skills_context); not gated on read — load is the mechanism
+	if (skills.length > 0) {
+		soul += formatSkillsForPrompt(skills, { embedBodies: true });
 	}
 
 	// Add date and working directory last

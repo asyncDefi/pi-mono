@@ -413,6 +413,7 @@ export class Agent {
 			model: this._state.model,
 			reasoning: this._state.thinkingLevel === "off" ? undefined : this._state.thinkingLevel,
 			sessionId: this.sessionId,
+			getLiveSystemPrompt: () => this._state.systemPrompt,
 			onPayload: this.onPayload,
 			onResponse: this.onResponse,
 			transport: this.transport,

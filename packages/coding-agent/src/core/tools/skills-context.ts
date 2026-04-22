@@ -20,7 +20,12 @@ const skillsContextSchema = Type.Object({
 				"Skill context action: load, unload, list_active (in LLM context), list_discovered or list (all discovered names/descriptions), history",
 		},
 	),
-	name: Type.Optional(Type.String({ description: "Skill name (required for load/unload)" })),
+	name: Type.Optional(
+		Type.String({
+			description:
+				'Skill name for load/unload (same as the name="..." attribute on each <SKILL_*> block inside <LOADED_SKILLS> in the system prompt)',
+		}),
+	),
 });
 
 export type SkillsContextToolInput = Static<typeof skillsContextSchema>;

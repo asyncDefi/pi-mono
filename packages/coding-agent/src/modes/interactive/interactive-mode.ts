@@ -2558,13 +2558,25 @@ export class InteractiveMode {
 			model: this.session.model ? { provider: this.session.model.provider, id: this.session.model.id } : null,
 			thinkingLevel: this.session.thinkingLevel,
 			activeTools: this.session.getActiveToolNames(),
+			loadedSkillNames: this.session.loadedSkillNames,
+			liveSystemPromptDiffersFromBase: this.session.systemPrompt !== this.session.baseSystemPrompt,
 			packages: this.session.settingsManager.getPackages(),
 			extensionPaths: this.session.extensionRunner.getExtensionPaths(),
 			hasBeforeProviderRequestHandlers: this.session.hasExtensionHandlers("before_provider_request"),
 		};
 
 		fs.writeFileSync(path.join(snapshotsDir, "meta.json"), JSON.stringify(meta, null, 2), "utf-8");
-		fs.writeFileSync(path.join(snapshotsDir, "system-prompt.txt"), this.session.systemPrompt, "utf-8");
+		fs.writeFileSync(path.join(snapshotsDir, "system-prompt.txt"), this.session.baseSystemPrompt, "utf-8");
+		fs.writeFileSync(
+			path.join(snapshotsDir, "live-system-prompt.txt"),
+			this.session.systemPrompt,
+			"utf-8",
+		);
+		fs.writeFileSync(
+			path.join(snapshotsDir, "loaded-skills.json"),
+			JSON.stringify(this.session.getLoadedSkillsSnapshotDetails(), null, 2),
+			"utf-8",
+		);
 		fs.writeFileSync(
 			path.join(snapshotsDir, "messages.json"),
 			JSON.stringify(this.session.messages, null, 2),

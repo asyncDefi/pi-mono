@@ -154,6 +154,15 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	transformContext?: (messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>;
 
 	/**
+	 * When set, called before each LLM request to obtain the current system prompt.
+	 *
+	 * The agent loop keeps a snapshot of {@link AgentContext.systemPrompt} from the start of a run;
+	 * tools that mutate live state (e.g. loading skills into the system prompt) need this hook so
+	 * the next model call sees the updated prompt. When omitted, the snapshot value is used.
+	 */
+	getLiveSystemPrompt?: () => string;
+
+	/**
 	 * Resolves an API key dynamically for each LLM call.
 	 *
 	 * Useful for short-lived OAuth tokens (e.g., GitHub Copilot) that may expire

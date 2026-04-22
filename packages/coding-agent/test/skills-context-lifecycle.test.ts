@@ -1,6 +1,9 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Agent } from "@mariozechner/pi-agent-core";
 import { getModel } from "@mariozechner/pi-ai";
-import { describe, expect, test } from "vitest";
+import { afterAll, describe, expect, test } from "vitest";
 import { AgentSession } from "../src/core/agent-session.js";
 import { AuthStorage } from "../src/core/auth-storage.js";
 import { createExtensionRuntime } from "../src/core/extensions/loader.js";
@@ -27,13 +30,31 @@ function createResourceLoaderWithSkills(skills: Skill[]): ResourceLoader {
 	};
 }
 
+const createdSkillDirs: string[] = [];
+
 function createSkill(name: string): Skill {
+	const baseDir = mkdtempSync(join(tmpdir(), `pi-skill-${name}-`));
+	createdSkillDirs.push(baseDir);
+	const filePath = join(baseDir, "SKILL.md");
+	writeFileSync(
+		filePath,
+		`---
+name: ${name}
+description: Skill ${name}
+---
+
+# ${name}
+
+Skill body for tests.
+`,
+		"utf-8",
+	);
 	return {
 		name,
 		description: `Skill ${name}`,
-		filePath: `/tmp/${name}/SKILL.md`,
-		baseDir: `/tmp/${name}`,
-		sourceInfo: createSourceInfo(`/tmp/${name}/SKILL.md`, {
+		filePath,
+		baseDir,
+		sourceInfo: createSourceInfo(filePath, {
 			source: "project",
 			scope: "temporary",
 			origin: "top-level",
@@ -41,6 +62,16 @@ function createSkill(name: string): Skill {
 		disableModelInvocation: false,
 	};
 }
+
+afterAll(() => {
+	for (const dir of createdSkillDirs) {
+		try {
+			rmSync(dir, { recursive: true, force: true });
+		} catch {
+			// ignore
+		}
+	}
+});
 
 describe("skills context lifecycle", () => {
 	test("loads/unloads skills into system prompt and keeps last 5 events", () => {
@@ -70,14 +101,16 @@ describe("skills context lifecycle", () => {
 			resourceLoader,
 		});
 
-		expect(session.systemPrompt).not.toContain("<available_skills>");
+		expect(session.systemPrompt).not.toContain("<LOADED_SKILLS>");
 
 		(session as any)._loadSkillIntoContext("ui");
-		expect(session.systemPrompt).toContain("<available_skills>");
-		expect(session.systemPrompt).toContain("<name>ui</name>");
+		expect(session.systemPrompt).toContain("<LOADED_SKILLS>");
+		expect(session.systemPrompt).toContain("<SKILL_ui ");
+		expect(session.systemPrompt).toContain('name="ui"');
+		expect(session.systemPrompt).toContain("Skill body for tests.");
 
 		(session as any)._unloadSkillFromContext("ui");
-		expect(session.systemPrompt).not.toContain("<name>ui</name>");
+		expect(session.systemPrompt).not.toContain("<LOADED_SKILLS>");
 
 		// 6 events -> keep last 5
 		(session as any)._loadSkillIntoContext("ui");
@@ -173,7 +206,8 @@ describe("skills context lifecycle", () => {
 			resourceLoader,
 		});
 
-		expect(s2.systemPrompt).toContain("<name>ui</name>");
+		expect(s2.systemPrompt).toContain("<SKILL_ui ");
+		expect(s2.systemPrompt).toContain("Skill body for tests.");
 		s2.dispose();
 	});
 });

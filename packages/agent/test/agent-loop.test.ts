@@ -1,6 +1,7 @@
 import {
 	type AssistantMessage,
 	type AssistantMessageEvent,
+	type Context,
 	EventStream,
 	type Message,
 	type Model,
@@ -126,6 +127,37 @@ describe("agentLoop with AgentMessage", () => {
 		expect(eventTypes).toContain("message_end");
 		expect(eventTypes).toContain("turn_end");
 		expect(eventTypes).toContain("agent_end");
+	});
+
+	it("passes getLiveSystemPrompt to the provider when set (overrides stale snapshot)", async () => {
+		const context: AgentContext = {
+			systemPrompt: "stale-snapshot",
+			messages: [],
+			tools: [],
+		};
+		const received: string[] = [];
+		const config: AgentLoopConfig = {
+			model: createModel(),
+			convertToLlm: identityConverter,
+			getLiveSystemPrompt: () => "live-prompt",
+		};
+		const streamFn = (_model: Model<"openai-responses">, llmContext: Context) => {
+			received.push(llmContext.systemPrompt);
+			const stream = new MockAssistantStream();
+			queueMicrotask(() => {
+				stream.push({
+					type: "done",
+					reason: "stop",
+					message: createAssistantMessage([{ type: "text", text: "ok" }]),
+				});
+			});
+			return stream;
+		};
+
+		const stream = agentLoop([createUserMessage("hi")], context, config, undefined, streamFn);
+		await stream.result();
+
+		expect(received).toEqual(["live-prompt"]);
 	});
 
 	it("should handle custom message types via convertToLlm", async () => {

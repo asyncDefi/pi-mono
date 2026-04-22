@@ -1,8 +1,15 @@
-import { homedir } from "os";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "os";
 import { join, resolve } from "path";
 import { describe, expect, it } from "vitest";
 import type { ResourceDiagnostic } from "../src/core/diagnostics.js";
-import { formatSkillsForPrompt, loadSkills, loadSkillsFromDir, type Skill } from "../src/core/skills.js";
+import {
+	formatSkillsForPrompt,
+	loadSkills,
+	loadSkillsFromDir,
+	skillPromptSegmentId,
+	type Skill,
+} from "../src/core/skills.js";
 import { createSyntheticSourceInfo } from "../src/core/source-info.js";
 
 const fixturesDir = resolve(__dirname, "fixtures/skills");
@@ -227,7 +234,7 @@ describe("skills", () => {
 			expect(result).toBe("");
 		});
 
-		it("should format skills as XML", () => {
+		it("catalog mode (default): one line per skill, no disk read", () => {
 			const skills: Skill[] = [
 				createTestSkill({
 					name: "test-skill",
@@ -239,33 +246,45 @@ describe("skills", () => {
 
 			const result = formatSkillsForPrompt(skills);
 
-			expect(result).toContain("<available_skills>");
-			expect(result).toContain("</available_skills>");
-			expect(result).toContain("<skill>");
-			expect(result).toContain("<name>test-skill</name>");
-			expect(result).toContain("<description>A test skill.</description>");
-			expect(result).toContain("<location>/path/to/skill/SKILL.md</location>");
+			expect(result).toContain("- test-skill: A test skill.");
+			expect(result).not.toContain("<LOADED_SKILLS>");
+			expect(result).not.toContain("This is a valid skill");
 		});
 
-		it("should include intro text before XML", () => {
+		it("embedBodies: inlines SKILL.md body after front matter", () => {
 			const skills: Skill[] = [
 				createTestSkill({
-					name: "test-skill",
-					description: "A test skill.",
-					filePath: "/path/to/skill/SKILL.md",
-					baseDir: "/path/to/skill",
+					name: "valid-skill",
+					description: "A valid skill for testing purposes.",
+					filePath: join(fixturesDir, "valid-skill", "SKILL.md"),
+					baseDir: join(fixturesDir, "valid-skill"),
 				}),
 			];
 
-			const result = formatSkillsForPrompt(skills);
-			const xmlStart = result.indexOf("<available_skills>");
-			const introText = result.substring(0, xmlStart);
+			const result = formatSkillsForPrompt(skills, { embedBodies: true });
 
-			expect(introText).toContain("The following skills provide specialized instructions");
-			expect(introText).toContain("Use the read tool to load a skill's file");
+			expect(result).toContain("<LOADED_SKILLS>");
+			expect(result).toContain("</LOADED_SKILLS>");
+			expect(result).toContain(`<${skillPromptSegmentId("valid-skill")} `);
+			expect(result).toContain('name="valid-skill"');
+			expect(result).toContain("This is a valid skill that follows the Agent Skills standard.");
 		});
 
-		it("should escape XML special characters", () => {
+		it("embedBodies: reports read errors without throwing", () => {
+			const skills: Skill[] = [
+				createTestSkill({
+					name: "missing",
+					description: "x",
+					filePath: join(fixturesDir, "nonexistent-skill", "SKILL.md"),
+					baseDir: join(fixturesDir, "nonexistent-skill"),
+				}),
+			];
+
+			const result = formatSkillsForPrompt(skills, { embedBodies: true });
+			expect(result).toContain("[Could not read skill files:");
+		});
+
+		it("catalog: passes through special characters in descriptions", () => {
 			const skills: Skill[] = [
 				createTestSkill({
 					name: "test-skill",
@@ -276,13 +295,10 @@ describe("skills", () => {
 			];
 
 			const result = formatSkillsForPrompt(skills);
-
-			expect(result).toContain("&lt;special&gt;");
-			expect(result).toContain("&amp;");
-			expect(result).toContain("&quot;characters&quot;");
+			expect(result).toContain('<special> & "characters".');
 		});
 
-		it("should format multiple skills", () => {
+		it("catalog: formats multiple skills", () => {
 			const skills: Skill[] = [
 				createTestSkill({
 					name: "skill-one",
@@ -299,49 +315,105 @@ describe("skills", () => {
 			];
 
 			const result = formatSkillsForPrompt(skills);
+			expect(result).toContain("- skill-one: First skill.");
+			expect(result).toContain("- skill-two: Second skill.");
+		});
 
-			expect(result).toContain("<name>skill-one</name>");
-			expect(result).toContain("<name>skill-two</name>");
-			expect((result.match(/<skill>/g) || []).length).toBe(2);
+		it("embedBodies: multiple skills with real files", () => {
+			const skills: Skill[] = [
+				createTestSkill({
+					name: "valid-skill",
+					description: "A valid skill for testing purposes.",
+					filePath: join(fixturesDir, "valid-skill", "SKILL.md"),
+					baseDir: join(fixturesDir, "valid-skill"),
+				}),
+				createTestSkill({
+					name: "different-name",
+					description: "A skill with a name that doesn't match the directory.",
+					filePath: join(fixturesDir, "name-mismatch", "SKILL.md"),
+					baseDir: join(fixturesDir, "name-mismatch"),
+				}),
+			];
+
+			const result = formatSkillsForPrompt(skills, { embedBodies: true });
+			expect(result).toContain(`<${skillPromptSegmentId("valid-skill")} `);
+			expect(result).toContain(`<${skillPromptSegmentId("different-name")} `);
+			expect(result).toContain("Name Mismatch");
 		});
 
 		it("should exclude skills with disableModelInvocation from prompt", () => {
 			const skills: Skill[] = [
 				createTestSkill({
-					name: "visible-skill",
-					description: "A visible skill.",
-					filePath: "/path/visible/SKILL.md",
-					baseDir: "/path/visible",
+					name: "valid-skill",
+					description: "A valid skill for testing purposes.",
+					filePath: join(fixturesDir, "valid-skill", "SKILL.md"),
+					baseDir: join(fixturesDir, "valid-skill"),
 				}),
 				createTestSkill({
-					name: "hidden-skill",
-					description: "A hidden skill.",
-					filePath: "/path/hidden/SKILL.md",
-					baseDir: "/path/hidden",
+					name: "disable-model-invocation",
+					description: "A skill that cannot be invoked by the model.",
+					filePath: join(fixturesDir, "disable-model-invocation", "SKILL.md"),
+					baseDir: join(fixturesDir, "disable-model-invocation"),
 					disableModelInvocation: true,
 				}),
 			];
 
-			const result = formatSkillsForPrompt(skills);
+			const resultCatalog = formatSkillsForPrompt(skills);
+			expect(resultCatalog).toContain("- valid-skill:");
+			expect(resultCatalog).not.toContain("disable-model-invocation");
 
-			expect(result).toContain("<name>visible-skill</name>");
-			expect(result).not.toContain("<name>hidden-skill</name>");
-			expect((result.match(/<skill>/g) || []).length).toBe(1);
+			const resultEmbed = formatSkillsForPrompt(skills, { embedBodies: true });
+			expect(resultEmbed).toContain(`<${skillPromptSegmentId("valid-skill")} `);
+			expect(resultEmbed).not.toContain(skillPromptSegmentId("disable-model-invocation"));
+		});
+
+		it("embedBodies: includes other text files under the skill directory", () => {
+			const dir = mkdtempSync(join(tmpdir(), "pi-skill-bundle-"));
+			try {
+				writeFileSync(
+					join(dir, "SKILL.md"),
+					`---
+name: bundle-skill
+description: Bundle test
+---
+# Root
+
+Hello from root.
+`,
+					"utf-8",
+				);
+				writeFileSync(join(dir, "helper.py"), "# helper\nprint(1)\n", "utf-8");
+				const skills: Skill[] = [
+					createTestSkill({
+						name: "bundle-skill",
+						description: "Bundle test",
+						filePath: join(dir, "SKILL.md"),
+						baseDir: dir,
+					}),
+				];
+				const result = formatSkillsForPrompt(skills, { embedBodies: true });
+				expect(result).toContain("# file: SKILL.md");
+				expect(result).toContain("# file: helper.py");
+				expect(result).toContain("Hello from root.");
+				expect(result).toContain("print(1)");
+			} finally {
+				rmSync(dir, { recursive: true, force: true });
+			}
 		});
 
 		it("should return empty string when all skills have disableModelInvocation", () => {
 			const skills: Skill[] = [
 				createTestSkill({
-					name: "hidden-skill",
-					description: "A hidden skill.",
-					filePath: "/path/hidden/SKILL.md",
-					baseDir: "/path/hidden",
+					name: "disable-model-invocation",
+					description: "A skill that cannot be invoked by the model.",
+					filePath: join(fixturesDir, "disable-model-invocation", "SKILL.md"),
+					baseDir: join(fixturesDir, "disable-model-invocation"),
 					disableModelInvocation: true,
 				}),
 			];
 
-			const result = formatSkillsForPrompt(skills);
-			expect(result).toBe("");
+			expect(formatSkillsForPrompt(skills)).toBe("");
+			expect(formatSkillsForPrompt(skills, { embedBodies: true })).toBe("");
 		});
 	});
 

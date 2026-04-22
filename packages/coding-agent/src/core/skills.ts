@@ -1,9 +1,9 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "fs";
 import ignore from "ignore";
 import { homedir } from "os";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "path";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.js";
-import { parseFrontmatter } from "../utils/frontmatter.js";
+import { parseFrontmatter, stripFrontmatter } from "../utils/frontmatter.js";
 import type { ResourceDiagnostic } from "./diagnostics.js";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.js";
 
@@ -14,6 +14,52 @@ const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 
 const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"];
+
+/** Max UTF-8 bytes per file when inlining a skill directory into the system prompt. */
+const MAX_SKILL_SINGLE_FILE_BYTES = 300_000;
+/** Max characters for one skill's combined CDATA (all text files under the skill dir). */
+const MAX_SKILL_SEGMENT_TOTAL_CHARS = 200_000;
+
+const SKIP_SKILL_SUBDIR_NAMES = new Set([
+	"node_modules",
+	".git",
+	"__pycache__",
+	".venv",
+	"venv",
+	"dist",
+	"build",
+	".turbo",
+	"coverage",
+	"target",
+]);
+
+const SKILL_TEXT_FILE_EXTENSIONS = new Set([
+	".md",
+	".txt",
+	".json",
+	".yaml",
+	".yml",
+	".py",
+	".ts",
+	".tsx",
+	".js",
+	".jsx",
+	".mjs",
+	".cjs",
+	".sh",
+	".toml",
+	".css",
+	".html",
+	".htm",
+	".svg",
+	".xml",
+	".csv",
+	".sql",
+	".graphql",
+	".ini",
+	".cfg",
+	".properties",
+]);
 
 type IgnoreMatcher = ReturnType<typeof ignore>;
 
@@ -328,49 +374,157 @@ function loadSkillFromFile(
 	}
 }
 
+/** Stable segment tag for `<SKILL_*>` (only `[A-Za-z0-9_]`). Use the `name` attribute with skills_context load/unload. */
+export function skillPromptSegmentId(skillName: string): string {
+	const core = skillName.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_|_$/g, "") || "skill";
+	return `SKILL_${core}`;
+}
+
+function escapeXmlAttribute(value: string): string {
+	return value
+		.replace(/&/g, "&amp;")
+		.replace(/"/g, "&quot;")
+		.replace(/</g, "&lt;")
+		.replace(/\r/g, "&#13;");
+}
+
+function wrapCdata(text: string): string {
+	return `<![CDATA[${text.replace(/\]\]>/g, "]]]]><![CDATA[>")}]]>`;
+}
+
+type SkillDirFile = { rel: string; text: string };
+
+function collectSkillDirectoryTextFiles(rootDir: string): SkillDirFile[] {
+	if (!existsSync(rootDir) || !statSync(rootDir).isDirectory()) {
+		return [];
+	}
+	const out: SkillDirFile[] = [];
+	const walk = (absDir: string): void => {
+		for (const ent of readdirSync(absDir, { withFileTypes: true })) {
+			const abs = join(absDir, ent.name);
+			if (ent.isDirectory()) {
+				if (SKIP_SKILL_SUBDIR_NAMES.has(ent.name)) continue;
+				walk(abs);
+			} else if (ent.isFile()) {
+				const rel = relative(rootDir, abs).split(sep).join("/");
+				const ext = extname(ent.name).toLowerCase();
+				const isSkillMd = ent.name.toUpperCase() === "SKILL.MD";
+				if (!isSkillMd && !SKILL_TEXT_FILE_EXTENSIONS.has(ext)) continue;
+				try {
+					const buf = readFileSync(abs);
+					if (buf.length > MAX_SKILL_SINGLE_FILE_BYTES) {
+						out.push({
+							rel,
+							text: `[skipped file: larger than ${MAX_SKILL_SINGLE_FILE_BYTES} bytes]\n`,
+						});
+						continue;
+					}
+					out.push({ rel, text: buf.toString("utf8") });
+				} catch (err) {
+					const msg = err instanceof Error ? err.message : String(err);
+					out.push({ rel, text: `[read error: ${msg}]\n` });
+				}
+			}
+		}
+	};
+	walk(rootDir);
+	out.sort((a, b) => {
+		const aSkill = a.rel === "SKILL.md" || a.rel.endsWith("/SKILL.md");
+		const bSkill = b.rel === "SKILL.md" || b.rel.endsWith("/SKILL.md");
+		if (aSkill && !bSkill) return -1;
+		if (!aSkill && bSkill) return 1;
+		return a.rel.localeCompare(b.rel);
+	});
+	return out;
+}
+
+function isSkillMdRel(rel: string): boolean {
+	return rel === "SKILL.md" || rel.endsWith("/SKILL.md");
+}
+
+function formatSingleLoadedSkillSegment(skill: Skill): string {
+	const tag = skillPromptSegmentId(skill.name);
+	const desc = skill.description.trim().replace(/\s+/g, " ");
+	let files = collectSkillDirectoryTextFiles(skill.baseDir);
+	if (files.length === 0) {
+		try {
+			const raw = readFileSync(skill.filePath, "utf-8");
+			const rel =
+				skill.baseDir && existsSync(skill.baseDir)
+					? relative(skill.baseDir, skill.filePath).split(sep).join("/") || "SKILL.md"
+					: "SKILL.md";
+			files = [{ rel, text: raw }];
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			return `<${tag} name="${escapeXmlAttribute(skill.name)}" description="${escapeXmlAttribute(desc)}">${wrapCdata(`[Could not read skill files: ${msg}]`)}</${tag}>`;
+		}
+	}
+
+	const parts: string[] = [];
+	let total = 0;
+	for (const f of files) {
+		const body = isSkillMdRel(f.rel) ? stripFrontmatter(f.text).trim() : f.text.trim();
+		const header = `# file: ${f.rel}\n\n`;
+		const segment = header + body;
+		if (total + segment.length > MAX_SKILL_SEGMENT_TOTAL_CHARS) {
+			parts.push(`[omitted: combined skill text exceeded ${MAX_SKILL_SEGMENT_TOTAL_CHARS} characters]\n`);
+			break;
+		}
+		parts.push(segment);
+		total += segment.length;
+	}
+	const joined = parts.join("\n---\n\n");
+	return `<${tag} name="${escapeXmlAttribute(skill.name)}" description="${escapeXmlAttribute(desc)}">${wrapCdata(joined)}</${tag}>`;
+}
+
+export type FormatSkillsForPromptOptions = {
+	/**
+	 * When true, embed each loaded skill under `<LOADED_SKILLS>` as `<SKILL_*>` with CDATA (SKILL.md body plus text files under the skill directory).
+	 * Use for skills loaded into the session via skills_context. Default false: one line per skill (catalog).
+	 */
+	embedBodies?: boolean;
+};
+
 /**
  * Format skills for inclusion in a system prompt.
- * Uses XML format per Agent Skills standard.
- * See: https://agentskills.io/integrate-skills
+ *
+ * - Default (`embedBodies` false): one line per skill (`name: summary`), no disk reads (e.g. Mom catalog).
+ * - `embedBodies` true: `<LOADED_SKILLS>` segments with full text bundle per skill (pi session).
  *
  * Skills with disableModelInvocation=true are excluded from the prompt
  * (they can only be invoked explicitly via /skill:name commands).
  */
-export function formatSkillsForPrompt(skills: Skill[]): string {
+export function formatSkillsForPrompt(skills: Skill[], options?: FormatSkillsForPromptOptions): string {
 	const visibleSkills = skills.filter((s) => !s.disableModelInvocation);
 
 	if (visibleSkills.length === 0) {
 		return "";
 	}
 
-	const lines = [
-		"\n\nThe following skills provide specialized instructions for specific tasks.",
-		"Use the read tool to load a skill's file when the task matches its description.",
-		"When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+	if (options?.embedBodies !== true) {
+		const lines = visibleSkills.map((skill) => {
+			const desc = skill.description.trim().replace(/\s+/g, " ");
+			return `- ${skill.name}: ${desc}`;
+		});
+		return `\n\n${lines.join("\n")}`;
+	}
+
+	const lines: string[] = [
 		"",
-		"<available_skills>",
+		"",
+		"<LOADED_SKILLS>",
+		"Load or unload using skills_context with the exact value of each block's name attribute (e.g. name=\"my-skill\"). The opening tag (SKILL_*) is a stable segment id for quick reference; tools use the name attribute.",
+		"When a skill references a relative path, resolve it against that skill's directory (the folder containing its SKILL.md).",
+		"",
 	];
 
 	for (const skill of visibleSkills) {
-		lines.push("  <skill>");
-		lines.push(`    <name>${escapeXml(skill.name)}</name>`);
-		lines.push(`    <description>${escapeXml(skill.description)}</description>`);
-		lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
-		lines.push("  </skill>");
+		lines.push(formatSingleLoadedSkillSegment(skill));
+		lines.push("");
 	}
-
-	lines.push("</available_skills>");
+	lines.push("</LOADED_SKILLS>");
 
 	return lines.join("\n");
-}
-
-function escapeXml(str: string): string {
-	return str
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;")
-		.replace(/'/g, "&apos;");
 }
 
 export interface LoadSkillsOptions {

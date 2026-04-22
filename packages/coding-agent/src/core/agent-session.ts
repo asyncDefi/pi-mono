@@ -999,6 +999,29 @@ export class AgentSession {
 		return this.agent.state.systemPrompt;
 	}
 
+	/**
+	 * System prompt rebuilt from session state (tools, skills loaded via skills_context, notes).
+	 * Use for diagnostics and context snapshots: {@link systemPrompt} can still hold a per-turn
+	 * extension override from the last request until the next user prompt resets it.
+	 */
+	get baseSystemPrompt(): string {
+		return this._baseSystemPrompt;
+	}
+
+	/** Skill names currently merged into {@link baseSystemPrompt} via skills_context. */
+	get loadedSkillNames(): string[] {
+		return this._listActiveSkills();
+	}
+
+	/** Loaded skills with paths (for snapshots); only entries still present in discovery. */
+	getLoadedSkillsSnapshotDetails(): Array<{ name: string; description: string; filePath: string }> {
+		const active = new Set(this._listActiveSkills());
+		return this._resourceLoader
+			.getSkills()
+			.skills.filter((s) => active.has(s.name))
+			.map((s) => ({ name: s.name, description: s.description, filePath: s.filePath }));
+	}
+
 	/** Current retry attempt (0 if not retrying) */
 	get retryAttempt(): number {
 		return this._retryAttempt;

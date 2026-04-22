@@ -242,6 +242,7 @@ export class ExtensionRunner {
 		wasLoaded: false,
 	});
 	private skillsContextListActiveFn: () => string[] = () => [];
+	private skillsContextListDiscoveredFn: () => string[] = () => [];
 	private skillsContextHistoryFn: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> =
 		() => [];
 	private dontDestroyNotesSetFn: (slot: number, text: string) => { set: boolean; truncated: boolean; limit: number } =
@@ -316,6 +317,7 @@ export class ExtensionRunner {
 		this.skillsContextLoadFn = contextActions.skillsContextLoad;
 		this.skillsContextUnloadFn = contextActions.skillsContextUnload;
 		this.skillsContextListActiveFn = contextActions.skillsContextListActive;
+		this.skillsContextListDiscoveredFn = contextActions.skillsContextListDiscovered ?? (() => []);
 		this.skillsContextHistoryFn = contextActions.skillsContextHistory;
 		this.dontDestroyNotesSetFn = contextActions.dontDestroyNotesSet;
 		this.dontDestroyNotesClearFn = contextActions.dontDestroyNotesClear;
@@ -619,6 +621,7 @@ export class ExtensionRunner {
 					load: (name: string) => runner.skillsContextLoadFn(name),
 					unload: (name: string) => runner.skillsContextUnloadFn(name),
 					listActive: () => runner.skillsContextListActiveFn(),
+					listDiscovered: () => runner.skillsContextListDiscoveredFn(),
 					history: () => runner.skillsContextHistoryFn(),
 				};
 			},

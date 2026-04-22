@@ -78,6 +78,7 @@ Pi also supports dynamically controlling which discovered skills are included in
   - **load**: add a discovered skill (by `name`) to the active context set
   - **unload**: remove a skill from the active context set
   - **list_active**: list currently active skills
+  - **list_discovered** (alias **list**): list all discovered skills with descriptions (no direct reads under project config)
   - **history**: show the last 5 load/unload events (timestamped)
 
 Only **active** skills are included in the system prompt. Skills are still invokable explicitly via `/skill:name` regardless of whether they are active.

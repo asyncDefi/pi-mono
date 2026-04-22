@@ -310,6 +310,8 @@ export interface ExtensionContext {
 		unload: (name: string) => { unloaded: boolean; wasLoaded: boolean };
 		/** List active skill names currently included in context. */
 		listActive: () => string[];
+		/** List all discovered skills (name and description), without reading project config files. */
+		listDiscovered: () => string[];
 		/** Get last N lifecycle events (newest last). */
 		history: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }>;
 	};
@@ -1500,6 +1502,7 @@ export interface ExtensionContextActions {
 	skillsContextLoad: (name: string) => { loaded: boolean; alreadyLoaded: boolean };
 	skillsContextUnload: (name: string) => { unloaded: boolean; wasLoaded: boolean };
 	skillsContextListActive: () => string[];
+	skillsContextListDiscovered: () => string[];
 	skillsContextHistory: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }>;
 	dontDestroyNotesSet: (slot: number, text: string) => { set: boolean; truncated: boolean; limit: number };
 	dontDestroyNotesClear: (slot: number) => { cleared: boolean };

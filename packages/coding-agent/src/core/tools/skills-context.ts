@@ -7,8 +7,18 @@ import { wrapToolDefinition } from "./tool-definition-wrapper.js";
 
 const skillsContextSchema = Type.Object({
 	action: Type.Union(
-		[Type.Literal("load"), Type.Literal("unload"), Type.Literal("list_active"), Type.Literal("history")],
-		{ description: "Skill context action" },
+		[
+			Type.Literal("load"),
+			Type.Literal("unload"),
+			Type.Literal("list_active"),
+			Type.Literal("list_discovered"),
+			Type.Literal("list"),
+			Type.Literal("history"),
+		],
+		{
+			description:
+				"Skill context action: load, unload, list_active (in LLM context), list_discovered or list (all discovered names/descriptions), history",
+		},
 	),
 	name: Type.Optional(Type.String({ description: "Skill name (required for load/unload)" })),
 });
@@ -39,7 +49,7 @@ export function createSkillsContextToolDefinition(): ToolDefinition<typeof skill
 		name: "skills_context",
 		label: "skills_context",
 		description:
-			"Load/unload discovered skills into the current LLM context, list active skills, and show recent load/unload history.",
+			"Load/unload discovered skills into the current LLM context; list_discovered (or list) for all discovered skill names and descriptions; list_active for skills currently in context; history for recent load/unload events.",
 		promptSnippet: "Load/unload skills into context",
 		parameters: skillsContextSchema,
 		async execute(_toolCallId, args: SkillsContextToolInput, _signal, _onUpdate, ctx) {
@@ -89,6 +99,14 @@ export function createSkillsContextToolDefinition(): ToolDefinition<typeof skill
 							text: active.length === 0 ? "(no active skills)" : active.join("\n"),
 						},
 					],
+					details: undefined,
+				};
+			}
+
+			if (action === "list_discovered" || action === "list") {
+				const lines = ctx.skillsContext.listDiscovered();
+				return {
+					content: [{ type: "text", text: lines.join("\n") }],
 					details: undefined,
 				};
 			}

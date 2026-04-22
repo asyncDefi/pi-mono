@@ -94,6 +94,39 @@ describe("skills context lifecycle", () => {
 		session.dispose();
 	});
 
+	test("lists discovered skill summaries from resource loader", () => {
+		const cwd = process.cwd();
+		const model = getModel("anthropic", "claude-sonnet-4-5")!;
+		const agent = new Agent({
+			getApiKey: () => "test",
+			initialState: {
+				model,
+				systemPrompt: "base",
+				tools: createCodingTools(cwd),
+			},
+		});
+
+		const sessionManager = SessionManager.inMemory();
+		const settingsManager = SettingsManager.create(cwd, cwd);
+		const authStorage = AuthStorage.create(`${cwd}/auth.json`);
+		const modelRegistry = ModelRegistry.create(authStorage, cwd);
+		const resourceLoader = createResourceLoaderWithSkills([createSkill("ui")]);
+
+		const session = new AgentSession({
+			agent,
+			sessionManager,
+			settingsManager,
+			cwd,
+			modelRegistry,
+			resourceLoader,
+		});
+
+		const lines = (session as unknown as { _listDiscoveredSkillLines(): string[] })._listDiscoveredSkillLines();
+		expect(lines.some((l) => l.startsWith("ui:"))).toBe(true);
+
+		session.dispose();
+	});
+
 	test("restores active skills from session custom entries", () => {
 		const cwd = process.cwd();
 		const model = getModel("anthropic", "claude-sonnet-4-5")!;

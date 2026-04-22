@@ -78,6 +78,10 @@ import { CURRENT_SESSION_VERSION, getLatestCompactionEntry, type SessionHeader }
 import type { SettingsManager } from "./settings-manager.js";
 import type { SlashCommandInfo } from "./slash-commands.js";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.js";
+import {
+	extractOutboundToolSummaries,
+	type OutboundToolSummary,
+} from "./provider-payload-tools.js";
 import { type BuildSystemPromptOptions, buildSystemPrompt } from "./system-prompt.js";
 import { type BashOperations, createLocalBashOperations } from "./tools/bash.js";
 import { createAllToolDefinitions } from "./tools/index.js";
@@ -150,7 +154,7 @@ export interface AgentSessionConfig {
 	customTools?: ToolDefinition[];
 	/** Model registry for API key resolution and model discovery */
 	modelRegistry: ModelRegistry;
-	/** Initial active built-in tool names. Default: [read, bash, edit, write] */
+	/** Initial active built-in tool names. Default matches SDK: read, bash, edit, write, skills_context, dont_destroy_notes */
 	initialActiveToolNames?: string[];
 	/** Optional allowlist of tool names. When provided, only these tool names are exposed. */
 	allowedToolNames?: string[];
@@ -299,6 +303,10 @@ export class AgentSession {
 	private _toolDefinitions: Map<string, ToolDefinitionEntry> = new Map();
 	private _toolPromptSnippets: Map<string, string> = new Map();
 	private _toolPromptGuidelines: Map<string, string[]> = new Map();
+
+	/** Tools from the last outbound provider payload (post `before_provider_request`), e.g. MCP-merged. */
+	private _lastOutboundProviderTools: OutboundToolSummary[] = [];
+	private _lastOutboundProviderToolsCapturedAt: string | null = null;
 
 	// Base system prompt (without extension appends) - used to apply fresh appends each turn
 	private _baseSystemPrompt = "";
@@ -542,6 +550,20 @@ export class AgentSession {
 
 	private _listActiveSkills(): string[] {
 		return Array.from(this._activeSkillNames.values()).sort((a, b) => a.localeCompare(b));
+	}
+
+	/** One line per discovered skill for skills_context tool (no filesystem read of SKILL.md). */
+	private _listDiscoveredSkillLines(): string[] {
+		const { skills } = this._resourceLoader.getSkills();
+		if (skills.length === 0) {
+			return ["(no skills discovered)"];
+		}
+		return [...skills]
+			.sort((a, b) => a.name.localeCompare(b.name))
+			.map((s) => {
+				const note = s.disableModelInvocation ? " [/skill only]" : "";
+				return `${s.name}: ${s.description}${note}`;
+			});
 	}
 
 	private _getSkillsContextHistory(): Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> {
@@ -1000,6 +1022,25 @@ export class AgentSession {
 			parameters: definition.parameters,
 			sourceInfo,
 		}));
+	}
+
+	/**
+	 * Record normalized tools from the provider HTTP body right before the request is sent
+	 * (after `before_provider_request` extensions). Used for context snapshots and debugging.
+	 */
+	recordOutboundProviderTools(payload: unknown): void {
+		this._lastOutboundProviderTools = extractOutboundToolSummaries(payload);
+		this._lastOutboundProviderToolsCapturedAt = new Date().toISOString();
+	}
+
+	/**
+	 * Tools from the last recorded outbound provider request, or empty until a model request runs.
+	 */
+	getOutboundProviderToolsSnapshot(): { capturedAt: string | null; tools: OutboundToolSummary[] } {
+		return {
+			capturedAt: this._lastOutboundProviderToolsCapturedAt,
+			tools: [...this._lastOutboundProviderTools],
+		};
 	}
 
 	getToolDefinition(name: string): ToolDefinition | undefined {
@@ -2438,6 +2479,7 @@ export class AgentSession {
 				skillsContextLoad: (name) => this._loadSkillIntoContext(name),
 				skillsContextUnload: (name) => this._unloadSkillFromContext(name),
 				skillsContextListActive: () => this._listActiveSkills(),
+				skillsContextListDiscovered: () => this._listDiscoveredSkillLines(),
 				skillsContextHistory: () => this._getSkillsContextHistory(),
 				dontDestroyNotesSet: (slot, text) => this._setDontDestroyNote(slot, text),
 				dontDestroyNotesClear: (slot) => this._clearDontDestroyNote(slot),

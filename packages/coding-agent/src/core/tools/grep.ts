@@ -9,6 +9,7 @@ import { keyHint } from "../../modes/interactive/components/keybinding-hints.js"
 import { ensureTool } from "../../utils/tools-manager.js";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
 import { resolveToCwd } from "./path-utils.js";
+import { assertPathAllowedForProjectConfig, getRipgrepProjectConfigExcludeGlobs } from "./project-config-access.js";
 import { getTextOutput, invalidArgText, shortenPath, str } from "./render-utils.js";
 import { wrapToolDefinition } from "./tool-definition-wrapper.js";
 import {
@@ -175,6 +176,7 @@ export function createGrepToolDefinition(
 						}
 
 						const searchPath = resolveToCwd(searchDir || ".", cwd);
+						assertPathAllowedForProjectConfig(searchPath, cwd);
 						const ops = customOps ?? defaultGrepOperations;
 						let isDirectory: boolean;
 						try {
@@ -215,6 +217,9 @@ export function createGrepToolDefinition(
 						if (ignoreCase) args.push("--ignore-case");
 						if (literal) args.push("--fixed-strings");
 						if (glob) args.push("--glob", glob);
+						for (const excludeGlob of getRipgrepProjectConfigExcludeGlobs(searchPath, cwd)) {
+							args.push("--glob", excludeGlob);
+						}
 						args.push(pattern, searchPath);
 
 						const child = spawn(rgPath, args, { stdio: ["ignore", "pipe", "pipe"] });

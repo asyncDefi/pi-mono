@@ -2558,6 +2558,9 @@ export class InteractiveMode {
 			model: this.session.model ? { provider: this.session.model.provider, id: this.session.model.id } : null,
 			thinkingLevel: this.session.thinkingLevel,
 			activeTools: this.session.getActiveToolNames(),
+			packages: this.session.settingsManager.getPackages(),
+			extensionPaths: this.session.extensionRunner.getExtensionPaths(),
+			hasBeforeProviderRequestHandlers: this.session.hasExtensionHandlers("before_provider_request"),
 		};
 
 		fs.writeFileSync(path.join(snapshotsDir, "meta.json"), JSON.stringify(meta, null, 2), "utf-8");
@@ -2570,6 +2573,20 @@ export class InteractiveMode {
 		fs.writeFileSync(
 			path.join(snapshotsDir, "tool-definitions.json"),
 			JSON.stringify(this.session.getAllTools(), null, 2),
+			"utf-8",
+		);
+
+		const outbound = this.session.getOutboundProviderToolsSnapshot();
+		fs.writeFileSync(
+			path.join(snapshotsDir, "provider-request-tools.json"),
+			JSON.stringify(
+				{
+					...outbound,
+					note: "Tools extracted from the last outbound provider HTTP payload (after before_provider_request). MCP and similar adapters usually inject tools there; this list is empty until at least one model request runs in this session.",
+				},
+				null,
+				2,
+			),
 			"utf-8",
 		);
 

@@ -9,6 +9,11 @@ import { keyHint } from "../../modes/interactive/components/keybinding-hints.js"
 import { ensureTool } from "../../utils/tools-manager.js";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
 import { resolveToCwd } from "./path-utils.js";
+import {
+	assertPathAllowedForProjectConfig,
+	getFdProjectConfigExcludePatterns,
+	getFindCustomGlobProjectConfigIgnores,
+} from "./project-config-access.js";
 import { getTextOutput, invalidArgText, shortenPath, str } from "./render-utils.js";
 import { wrapToolDefinition } from "./tool-definition-wrapper.js";
 import { DEFAULT_MAX_BYTES, formatSize, type TruncationResult, truncateHead } from "./truncate.js";
@@ -151,6 +156,7 @@ export function createFindToolDefinition(
 				(async () => {
 					try {
 						const searchPath = resolveToCwd(searchDir || ".", cwd);
+						assertPathAllowedForProjectConfig(searchPath, cwd);
 						const effectiveLimit = limit ?? DEFAULT_LIMIT;
 						const ops = customOps ?? defaultFindOperations;
 
@@ -165,7 +171,11 @@ export function createFindToolDefinition(
 								return;
 							}
 							const results = await ops.glob(pattern, searchPath, {
-								ignore: ["**/node_modules/**", "**/.git/**"],
+								ignore: [
+									"**/node_modules/**",
+									"**/.git/**",
+									...getFindCustomGlobProjectConfigIgnores(searchPath, cwd),
+								],
 								limit: effectiveLimit,
 							});
 							if (signal?.aborted) {
@@ -235,6 +245,9 @@ export function createFindToolDefinition(
 							"--max-results",
 							String(effectiveLimit),
 						];
+						for (const excludePattern of getFdProjectConfigExcludePatterns(searchPath, cwd)) {
+							args.push("-E", excludePattern);
+						}
 
 						// fd --glob matches against the basename unless --full-path is set; in --full-path
 						// mode it matches against the absolute candidate path, so a path-containing

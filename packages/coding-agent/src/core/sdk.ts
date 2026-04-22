@@ -50,8 +50,8 @@ export interface CreateAgentSessionOptions {
 	/**
 	 * Optional allowlist of tool names.
 	 *
-	 * When omitted, pi enables the default built-in tools (read, bash, edit, write)
-	 * and leaves extension/custom tools enabled.
+	 * When omitted, pi enables the default built-in tools (read, bash, edit, write,
+	 * skills_context, dont_destroy_notes) and leaves extension/custom tools enabled.
 	 * When provided, only the listed tool names are enabled.
 	 */
 	tools?: string[];
@@ -244,7 +244,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		thinkingLevel = "off";
 	}
 
-	const defaultActiveToolNames: ToolName[] = ["read", "bash", "edit", "write"];
+	const defaultActiveToolNames: ToolName[] = ["read", "bash", "edit", "write", "skills_context", "dont_destroy_notes"];
 	const initialActiveToolNames: string[] = options.tools ? [...options.tools] : defaultActiveToolNames;
 
 	let agent: Agent;
@@ -287,6 +287,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	};
 
 	const extensionRunnerRef: { current?: ExtensionRunner } = {};
+	const outboundToolsSessionRef: { current?: AgentSession } = {};
 
 	agent = new Agent({
 		initialState: {
@@ -313,10 +314,12 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		},
 		onPayload: async (payload, _model) => {
 			const runner = extensionRunnerRef.current;
-			if (!runner?.hasHandlers("before_provider_request")) {
-				return payload;
-			}
-			return runner.emitBeforeProviderRequest(payload);
+			const next =
+				runner?.hasHandlers("before_provider_request") === true
+					? await runner.emitBeforeProviderRequest(payload)
+					: payload;
+			outboundToolsSessionRef.current?.recordOutboundProviderTools(next);
+			return next;
 		},
 		onResponse: async (response, _model) => {
 			const runner = extensionRunnerRef.current;
@@ -370,6 +373,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		extensionRunnerRef,
 		sessionStartEvent: options.sessionStartEvent,
 	});
+	outboundToolsSessionRef.current = session;
 	const extensionsResult = resourceLoader.getExtensions();
 
 	return {

@@ -149,7 +149,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	addGuideline("Be concise in your responses");
 	addGuideline("Show file paths clearly when working with files");
 	addGuideline(
-		"Load/unload skills into context with skills_context as needed; keep only relevant skills active to avoid bloating context",
+		"Load/unload skills with skills_context (actions load, unload, list_active, list_discovered or list, history); use list_discovered or list to answer which skills exist without reading project config files",
 	);
 	addGuideline("Use dont_destroy_notes to maintain short durable notes across compaction (7 slots, 2000 chars total)");
 

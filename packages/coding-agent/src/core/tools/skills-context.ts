@@ -1,18 +1,13 @@
+import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Text } from "@mariozechner/pi-tui";
 import { type Static, Type } from "@sinclair/typebox";
-import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
 import { getTextOutput } from "./render-utils.js";
 import { wrapToolDefinition } from "./tool-definition-wrapper.js";
 
 const skillsContextSchema = Type.Object({
 	action: Type.Union(
-		[
-			Type.Literal("load"),
-			Type.Literal("unload"),
-			Type.Literal("list_active"),
-			Type.Literal("history"),
-		],
+		[Type.Literal("load"), Type.Literal("unload"), Type.Literal("list_active"), Type.Literal("history")],
 		{ description: "Skill context action" },
 	),
 	name: Type.Optional(Type.String({ description: "Skill name (required for load/unload)" })),
@@ -65,9 +60,7 @@ export function createSkillsContextToolDefinition(): ToolDefinition<typeof skill
 					content: [
 						{
 							type: "text",
-							text: r.alreadyLoaded
-								? `Skill "${name}" already loaded.`
-								: `Skill "${name}" loaded into context.`,
+							text: r.alreadyLoaded ? `Skill "${name}" already loaded.` : `Skill "${name}" loaded into context.`,
 						},
 					],
 					details: undefined,
@@ -80,9 +73,7 @@ export function createSkillsContextToolDefinition(): ToolDefinition<typeof skill
 					content: [
 						{
 							type: "text",
-							text: !r.wasLoaded
-								? `Skill "${name}" was not loaded.`
-								: `Skill "${name}" unloaded from context.`,
+							text: !r.wasLoaded ? `Skill "${name}" was not loaded.` : `Skill "${name}" unloaded from context.`,
 						},
 					],
 					details: undefined,
@@ -120,4 +111,3 @@ export function createSkillsContextToolDefinition(): ToolDefinition<typeof skill
 export function createSkillsContextTool(): AgentTool<typeof skillsContextSchema> {
 	return wrapToolDefinition(createSkillsContextToolDefinition());
 }
-

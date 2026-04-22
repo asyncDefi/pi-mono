@@ -2549,16 +2549,18 @@ export class InteractiveMode {
 			cwd,
 			sessionId: this.session.sessionId,
 			sessionName: this.session.sessionName,
-			model: this.session.model
-				? { provider: this.session.model.provider, id: this.session.model.id }
-				: null,
+			model: this.session.model ? { provider: this.session.model.provider, id: this.session.model.id } : null,
 			thinkingLevel: this.session.thinkingLevel,
 			activeTools: this.session.getActiveToolNames(),
 		};
 
 		fs.writeFileSync(path.join(snapshotsDir, "meta.json"), JSON.stringify(meta, null, 2), "utf-8");
 		fs.writeFileSync(path.join(snapshotsDir, "system-prompt.txt"), this.session.systemPrompt, "utf-8");
-		fs.writeFileSync(path.join(snapshotsDir, "messages.json"), JSON.stringify(this.session.messages, null, 2), "utf-8");
+		fs.writeFileSync(
+			path.join(snapshotsDir, "messages.json"),
+			JSON.stringify(this.session.messages, null, 2),
+			"utf-8",
+		);
 		fs.writeFileSync(
 			path.join(snapshotsDir, "tool-definitions.json"),
 			JSON.stringify(this.session.getAllTools(), null, 2),
@@ -2642,7 +2644,7 @@ export class InteractiveMode {
 					);
 					this.streamingMessage = event.message;
 					this.chatContainer.addChild(this.streamingComponent);
-					this.streamingComponent.updateContent(this.streamingMessage);
+					this.streamingComponent.updateContent(this.streamingMessage, true);
 					this.ui.requestRender();
 				}
 				break;
@@ -2650,7 +2652,7 @@ export class InteractiveMode {
 			case "message_update":
 				if (this.streamingComponent && event.message.role === "assistant") {
 					this.streamingMessage = event.message;
-					this.streamingComponent.updateContent(this.streamingMessage);
+					this.streamingComponent.updateContent(this.streamingMessage, true);
 
 					for (const content of this.streamingMessage.content) {
 						if (content.type === "toolCall") {
@@ -2695,7 +2697,7 @@ export class InteractiveMode {
 								: "Operation aborted";
 						this.streamingMessage.errorMessage = errorMessage;
 					}
-					this.streamingComponent.updateContent(this.streamingMessage);
+					this.streamingComponent.updateContent(this.streamingMessage, false);
 
 					if (this.streamingMessage.stopReason === "aborted" || this.streamingMessage.stopReason === "error") {
 						if (!errorMessage) {

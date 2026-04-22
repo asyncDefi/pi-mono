@@ -249,8 +249,11 @@ export class ExtensionRunner {
 	private dontDestroyNotesClearFn: (slot: number) => { cleared: boolean } = () => ({ cleared: false });
 	private dontDestroyNotesClearAllFn: () => { cleared: boolean } = () => ({ cleared: false });
 	private dontDestroyNotesListFn: () => Array<{ slot: number; text: string | null; limit: number }> = () => [];
-	private dontDestroyNotesHistoryFn: () => Array<{ timestamp: string; action: "set" | "clear" | "clear_all"; slot?: number }> =
-		() => [];
+	private dontDestroyNotesHistoryFn: () => Array<{
+		timestamp: string;
+		action: "set" | "clear" | "clear_all";
+		slot?: number;
+	}> = () => [];
 	private newSessionHandler: NewSessionHandler = async () => ({ cancelled: false });
 	private forkHandler: ForkHandler = async () => ({ cancelled: false });
 	private navigateTreeHandler: NavigateTreeHandler = async () => ({ cancelled: false });

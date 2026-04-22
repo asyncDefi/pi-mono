@@ -317,8 +317,7 @@ export class AgentSession {
 	private static readonly DONT_DESTROY_CUSTOM_TYPE = "pi.dont_destroy";
 	private static readonly DONT_DESTROY_SLOT_LIMITS = [700, 400, 250, 200, 170, 150, 130] as const; // sum=2000
 	private _dontDestroyNotes: Array<string | null> = new Array(7).fill(null);
-	private _dontDestroyHistory: Array<{ timestamp: string; action: "set" | "clear" | "clear_all"; slot?: number }> =
-		[];
+	private _dontDestroyHistory: Array<{ timestamp: string; action: "set" | "clear" | "clear_all"; slot?: number }> = [];
 
 	constructor(config: AgentSessionConfig) {
 		this.agent = config.agent;
@@ -418,7 +417,6 @@ export class AgentSession {
 				const trimmed = text.trim();
 				notes[slot - 1] = trimmed.length > 0 ? trimmed.slice(0, limit) : null;
 				history.push({ timestamp: entry.timestamp, action: "set", slot });
-				continue;
 			}
 		}
 
@@ -480,7 +478,11 @@ export class AgentSession {
 		}));
 	}
 
-	private _getDontDestroyHistory(): Array<{ timestamp: string; action: "set" | "clear" | "clear_all"; slot?: number }> {
+	private _getDontDestroyHistory(): Array<{
+		timestamp: string;
+		action: "set" | "clear" | "clear_all";
+		slot?: number;
+	}> {
 		return [...this._dontDestroyHistory];
 	}
 
@@ -1125,9 +1127,7 @@ export class AgentSession {
 		const loaderAppendSystemPrompt = this._resourceLoader.getAppendSystemPrompt();
 		const appendSystemPrompt =
 			loaderAppendSystemPrompt.length > 0 ? loaderAppendSystemPrompt.join("\n\n") : undefined;
-		const loadedSkills = this._resourceLoader
-			.getSkills()
-			.skills.filter((s) => this._activeSkillNames.has(s.name));
+		const loadedSkills = this._resourceLoader.getSkills().skills.filter((s) => this._activeSkillNames.has(s.name));
 		const loadedContextFiles = this._resourceLoader.getAgentsFiles().agentsFiles;
 
 		this._baseSystemPromptOptions = {

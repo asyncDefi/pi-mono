@@ -78,7 +78,7 @@ describe("ExtensionRunner", () => {
 		getContextUsage: () => undefined,
 		compact: () => {},
 		getSystemPrompt: () => "",
-	};
+	} as unknown as ExtensionContextActions;
 
 	describe("shortcut conflicts", () => {
 		it("warns when extension shortcut conflicts with built-in", async () => {

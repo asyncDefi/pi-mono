@@ -110,4 +110,3 @@ export function createDontDestroyNotesToolDefinition(): ToolDefinition<typeof do
 export function createDontDestroyNotesTool(): AgentTool<typeof dontDestroyNotesSchema> {
 	return wrapToolDefinition(createDontDestroyNotesToolDefinition());
 }
-

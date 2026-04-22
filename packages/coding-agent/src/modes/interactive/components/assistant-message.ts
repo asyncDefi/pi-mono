@@ -1,10 +1,47 @@
 import type { AssistantMessage } from "@mariozechner/pi-ai";
-import { Container, Markdown, type MarkdownTheme, Spacer, Text } from "@mariozechner/pi-tui";
+import { type Component, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@mariozechner/pi-tui";
 import { getMarkdownTheme, theme } from "../theme/theme.js";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
 const OSC133_ZONE_END = "\x1b]133;B\x07";
 const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
+
+class ThinkingBox extends Container {
+	private borderColor: (text: string) => string;
+	private isStreaming: boolean;
+
+	constructor(content: Component, borderColor: (text: string) => string, isStreaming = false) {
+		super();
+		this.addChild(content);
+		this.borderColor = borderColor;
+		this.isStreaming = isStreaming;
+	}
+
+	override render(width: number): string[] {
+		const contentWidth = Math.max(1, width - 4);
+		const contentLines = [...super.render(contentWidth)];
+
+		// If empty but streaming, show a placeholder
+		if (contentLines.length === 0 && this.isStreaming) {
+			contentLines.push(theme.italic(theme.fg("thinkingText", "...")));
+		}
+
+		if (contentLines.length === 0) return [];
+
+		const result: string[] = [];
+		// Header with bullet and thinking level color
+		result.push(`${this.borderColor("•")} ${theme.italic(theme.fg("thinkingText", "Thinking"))}`);
+
+		// Tree-like structure for content
+		for (let i = 0; i < contentLines.length; i++) {
+			const isLast = i === contentLines.length - 1;
+			const prefix = isLast ? "└─ " : "│  ";
+			result.push(this.borderColor(prefix) + contentLines[i]);
+		}
+
+		return result;
+	}
+}
 
 /**
  * Component that renders a complete assistant message
@@ -15,6 +52,7 @@ export class AssistantMessageComponent extends Container {
 	private markdownTheme: MarkdownTheme;
 	private hiddenThinkingLabel: string;
 	private lastMessage?: AssistantMessage;
+	private lastIsStreaming = false;
 	private hasToolCalls = false;
 
 	constructor(
@@ -41,21 +79,21 @@ export class AssistantMessageComponent extends Container {
 	override invalidate(): void {
 		super.invalidate();
 		if (this.lastMessage) {
-			this.updateContent(this.lastMessage);
+			this.updateContent(this.lastMessage, this.lastIsStreaming);
 		}
 	}
 
 	setHideThinkingBlock(hide: boolean): void {
 		this.hideThinkingBlock = hide;
 		if (this.lastMessage) {
-			this.updateContent(this.lastMessage);
+			this.updateContent(this.lastMessage, this.lastIsStreaming);
 		}
 	}
 
 	setHiddenThinkingLabel(label: string): void {
 		this.hiddenThinkingLabel = label;
 		if (this.lastMessage) {
-			this.updateContent(this.lastMessage);
+			this.updateContent(this.lastMessage, this.lastIsStreaming);
 		}
 	}
 
@@ -70,15 +108,23 @@ export class AssistantMessageComponent extends Container {
 		return lines;
 	}
 
-	updateContent(message: AssistantMessage): void {
+	updateContent(message: AssistantMessage, isStreaming = false): void {
 		this.lastMessage = message;
+		this.lastIsStreaming = isStreaming;
 
 		// Clear content container
 		this.contentContainer.clear();
 
-		const hasVisibleContent = message.content.some(
-			(c) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()),
-		);
+		const hasVisibleContent = message.content.some((c, i) => {
+			const isLast = i === message.content.length - 1;
+			if (c.type === "text" && c.text.trim()) return true;
+			if (c.type === "thinking") {
+				if (c.thinking.trim()) return true;
+				// Show thinking block even if empty if it's currently streaming
+				if (isStreaming && isLast) return true;
+			}
+			return false;
+		});
 
 		if (hasVisibleContent) {
 			this.contentContainer.addChild(new Spacer(1));
@@ -91,12 +137,18 @@ export class AssistantMessageComponent extends Container {
 				// Assistant text messages with no background - trim the text
 				// Set paddingY=0 to avoid extra spacing before tool executions
 				this.contentContainer.addChild(new Markdown(content.text.trim(), 1, 0, this.markdownTheme));
-			} else if (content.type === "thinking" && content.thinking.trim()) {
+			} else if (content.type === "thinking") {
 				// Add spacing only when another visible assistant content block follows.
 				// This avoids a superfluous blank line before separately-rendered tool execution blocks.
-				const hasVisibleContentAfter = message.content
-					.slice(i + 1)
-					.some((c) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()));
+				const hasVisibleContentAfter = message.content.slice(i + 1).some((c, j) => {
+					const isLastAfter = i + 1 + j === message.content.length - 1;
+					if (c.type === "text" && c.text.trim()) return true;
+					if (c.type === "thinking") {
+						if (c.thinking.trim()) return true;
+						if (isStreaming && isLastAfter) return true;
+					}
+					return false;
+				});
 
 				if (this.hideThinkingBlock) {
 					// Show static thinking label when hidden
@@ -106,14 +158,17 @@ export class AssistantMessageComponent extends Container {
 					if (hasVisibleContentAfter) {
 						this.contentContainer.addChild(new Spacer(1));
 					}
-				} else {
-					// Thinking traces in thinkingText color, italic
-					this.contentContainer.addChild(
-						new Markdown(content.thinking.trim(), 1, 0, this.markdownTheme, {
+				} else if (content.thinking.trim() || (isStreaming && i === message.content.length - 1)) {
+					// Thinking traces in a bordered box
+					const box = new ThinkingBox(
+						new Markdown(content.thinking.trim(), 0, 0, this.markdownTheme, {
 							color: (text: string) => theme.fg("thinkingText", text),
 							italic: true,
 						}),
+						theme.getThinkingBorderColor("medium"),
+						isStreaming && i === message.content.length - 1,
 					);
+					this.contentContainer.addChild(box);
 					if (hasVisibleContentAfter) {
 						this.contentContainer.addChild(new Spacer(1));
 					}

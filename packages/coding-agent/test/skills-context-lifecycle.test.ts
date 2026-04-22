@@ -1,16 +1,16 @@
-import { describe, expect, test } from "vitest";
 import { Agent } from "@mariozechner/pi-agent-core";
-import { SessionManager } from "../src/core/session-manager.js";
-import { SettingsManager } from "../src/core/settings-manager.js";
+import { getModel } from "@mariozechner/pi-ai";
+import { describe, expect, test } from "vitest";
+import { AgentSession } from "../src/core/agent-session.js";
 import { AuthStorage } from "../src/core/auth-storage.js";
+import { createExtensionRuntime } from "../src/core/extensions/loader.js";
 import { ModelRegistry } from "../src/core/model-registry.js";
 import type { ResourceLoader } from "../src/core/resource-loader.js";
+import { SessionManager } from "../src/core/session-manager.js";
+import { SettingsManager } from "../src/core/settings-manager.js";
 import type { Skill } from "../src/core/skills.js";
-import { AgentSession } from "../src/core/agent-session.js";
-import { createCodingTools } from "../src/core/tools/index.js";
-import { getModel } from "@mariozechner/pi-ai";
-import { createExtensionRuntime } from "../src/core/extensions/loader.js";
 import { createSourceInfo } from "../src/core/source-info.js";
+import { createCodingTools } from "../src/core/tools/index.js";
 
 function createResourceLoaderWithSkills(skills: Skill[]): ResourceLoader {
 	const runtime = createExtensionRuntime();
@@ -33,7 +33,11 @@ function createSkill(name: string): Skill {
 		description: `Skill ${name}`,
 		filePath: `/tmp/${name}/SKILL.md`,
 		baseDir: `/tmp/${name}`,
-		sourceInfo: createSourceInfo(`/tmp/${name}/SKILL.md`, { source: "project", scope: "temporary", origin: "top-level" }),
+		sourceInfo: createSourceInfo(`/tmp/${name}/SKILL.md`, {
+			source: "project",
+			scope: "temporary",
+			origin: "top-level",
+		}),
 		disableModelInvocation: false,
 	};
 }
@@ -140,4 +144,3 @@ describe("skills context lifecycle", () => {
 		s2.dispose();
 	});
 });
-

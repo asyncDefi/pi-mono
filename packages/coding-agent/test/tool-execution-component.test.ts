@@ -9,6 +9,13 @@ import { createWriteToolDefinition } from "../src/core/tools/write.js";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.js";
 import { initTheme } from "../src/modes/interactive/theme/theme.js";
 
+function renderedLines(component: ToolExecutionComponent, width = 120): string[] {
+	return stripAnsi(component.render(width).join("\n"))
+		.split("\n")
+		.map((l) => l.trim())
+		.filter((l) => l.length > 0);
+}
+
 function createBaseToolDefinition(name = "custom_tool"): ToolDefinition {
 	return {
 		name,
@@ -33,7 +40,7 @@ describe("ToolExecutionComponent parity", () => {
 		initTheme("dark");
 	});
 
-	test("stacks custom call and result renderers like the old implementation", () => {
+	test("renders tool name header, bracket, then result (hides call renderer in default shell)", () => {
 		const toolDefinition: ToolDefinition = {
 			...createBaseToolDefinition(),
 			renderCall: () => new Text("custom call", 0, 0),
@@ -49,7 +56,12 @@ describe("ToolExecutionComponent parity", () => {
 			createFakeTui(),
 			process.cwd(),
 		);
-		expect(stripAnsi(component.render(120).join("\n"))).toContain("custom call");
+		{
+			const lines = renderedLines(component);
+			expect(lines[0]).toBe("◌ custom_tool");
+			expect(lines[1]).toBe("└");
+			expect(lines.join("\n")).not.toContain("custom call");
+		}
 
 		component.updateResult(
 			{
@@ -60,9 +72,13 @@ describe("ToolExecutionComponent parity", () => {
 			false,
 		);
 
-		const rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("custom call");
-		expect(rendered).toContain("custom result");
+		{
+			const lines = renderedLines(component);
+			expect(lines[0]).toBe("● custom_tool");
+			expect(lines[1]).toContain("└ custom result");
+			expect(lines.join("\n")).not.toContain("custom call");
+			expect(lines.join("\n")).toContain("custom result");
+		}
 	});
 
 	test("uses built-in rendering for built-in overrides without custom renderers", () => {
@@ -96,9 +112,10 @@ describe("ToolExecutionComponent parity", () => {
 			createFakeTui(),
 			process.cwd(),
 		);
-		const rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("read");
-		expect(rendered).toContain("README.md");
+		const lines = renderedLines(component);
+		expect(lines[0]).toBe("◌ read");
+		expect(lines[1]).toBe("└");
+		expect(lines.join("\n")).not.toContain("README.md");
 	});
 
 	test("bash execute emits an initial empty partial update before output arrives", async () => {
@@ -133,7 +150,10 @@ describe("ToolExecutionComponent parity", () => {
 		);
 		component.updateResult({ content: [{ type: "text", text: "hello" }], details: undefined, isError: false }, false);
 		const rendered = stripAnsi(component.render(120).join("\n"));
+		const lines = renderedLines(component);
 		expect(rendered.match(/\bread\b/g)?.length ?? 0).toBe(1);
+		expect(lines[0]).toBe("● read");
+		expect(lines[1]).toContain("└");
 	});
 
 	test("inherits missing built-in result renderer slot from the built-in tool", () => {
@@ -152,9 +172,11 @@ describe("ToolExecutionComponent parity", () => {
 			process.cwd(),
 		);
 		component.updateResult({ content: [{ type: "text", text: "hello" }], details: undefined, isError: false }, false);
-		const rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("override call");
-		expect(rendered).toContain("hello");
+		const lines = renderedLines(component);
+		expect(lines[0]).toBe("● read");
+		expect(lines[1]).toContain("└");
+		expect(lines.join("\n")).not.toContain("override call");
+		expect(lines.join("\n")).toContain("hello");
 	});
 
 	test("inherits missing built-in call renderer slot from the built-in tool", () => {
@@ -175,7 +197,7 @@ describe("ToolExecutionComponent parity", () => {
 		component.updateResult({ content: [{ type: "text", text: "hello" }], details: undefined, isError: false }, false);
 		const rendered = stripAnsi(component.render(120).join("\n"));
 		expect(rendered).toContain("read");
-		expect(rendered).toContain("README.md");
+		expect(rendered).not.toContain("README.md");
 		expect(rendered).toContain("override result");
 	});
 
@@ -196,8 +218,11 @@ describe("ToolExecutionComponent parity", () => {
 		);
 		component.updateResult({ content: [{ type: "text", text: "hello" }], details: undefined, isError: false }, false);
 		const rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("override call");
-		expect(rendered).toContain("override result");
+		const lines = renderedLines(component);
+		expect(lines[0]).toBe("● read");
+		expect(lines[1]).toContain("└");
+		expect(lines.join("\n")).not.toContain("override call");
+		expect(lines.join("\n")).toContain("override result");
 		expect(rendered).not.toContain("read README.md");
 	});
 
@@ -219,7 +244,7 @@ describe("ToolExecutionComponent parity", () => {
 		);
 		component.updateResult({ content: [{ type: "text", text: "hello" }], details: undefined, isError: false }, false);
 		const rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("wrapped override call");
+		expect(rendered).not.toContain("wrapped override call");
 		expect(rendered).toContain("wrapped override result");
 	});
 
@@ -247,7 +272,10 @@ describe("ToolExecutionComponent parity", () => {
 		);
 		component.updateResult({ content: [{ type: "text", text: "done" }], details: {}, isError: false }, false);
 		const rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("custom call shared-token");
+		const lines = renderedLines(component);
+		expect(lines[0]).toBe("● custom_tool");
+		expect(lines[1]).toContain("└");
+		expect(rendered).not.toContain("custom call shared-token");
 		expect(rendered).toContain("custom result shared-token");
 	});
 
@@ -270,6 +298,9 @@ describe("ToolExecutionComponent parity", () => {
 		);
 		component.updateResult({ content: [{ type: "text", text: "done" }], details: {}, isError: false }, false);
 		const rendered = stripAnsi(component.render(120).join("\n"));
+		const lines = renderedLines(component);
+		expect(lines[0]).toBe("● custom_tool");
+		expect(lines[1]).toContain("└");
 		expect(rendered).toContain("arg:bar");
 	});
 
@@ -293,7 +324,7 @@ describe("ToolExecutionComponent parity", () => {
 		expect(rendered).toContain("done");
 	});
 
-	test("trims trailing blank display lines from write previews", () => {
+	test("renders write tool header without showing call previews", () => {
 		const component = new ToolExecutionComponent(
 			"write",
 			"tool-7",
@@ -303,10 +334,11 @@ describe("ToolExecutionComponent parity", () => {
 			createFakeTui(),
 			process.cwd(),
 		);
-		const rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("one");
-		expect(rendered).toContain("two");
-		expect(rendered).not.toContain("two\n\n");
+		const lines = renderedLines(component);
+		expect(lines[0]).toBe("◌ write");
+		expect(lines[1]).toBe("└");
+		expect(lines.join("\n")).not.toContain("one");
+		expect(lines.join("\n")).not.toContain("two");
 	});
 
 	test("trims trailing blank display lines from read results", () => {

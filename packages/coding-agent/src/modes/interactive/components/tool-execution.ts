@@ -10,12 +10,33 @@ export interface ToolExecutionOptions {
 	imageWidthCells?: number;
 }
 
+class PrefixedResultComponent implements Component {
+	private inner: Component;
+
+	constructor(inner: Component) {
+		this.inner = inner;
+	}
+
+	invalidate(): void {
+		this.inner.invalidate();
+	}
+
+	render(width: number): string[] {
+		// Reserve 2 columns for "└ " / "  ".
+		const lines = this.inner.render(Math.max(0, width - 2));
+		if (lines.length === 0) return ["└"];
+		return lines.map((line, idx) => (idx === 0 ? `└ ${line}` : `  ${line}`));
+	}
+}
+
 export class ToolExecutionComponent extends Container {
 	private contentBox: Box;
 	private contentText: Text;
 	private selfRenderContainer: Container;
 	private callRendererComponent?: Component;
 	private resultRendererComponent?: Component;
+	private headerText: Text;
+	private bracketText: Text;
 	private rendererState: any = {};
 	private imageComponents: Image[] = [];
 	private imageSpacers: Spacer[] = [];
@@ -68,6 +89,8 @@ export class ToolExecutionComponent extends Container {
 		this.contentBox = new Box(1, 1, (text: string) => theme.bg("toolPendingBg", text));
 		this.contentText = new Text("", 1, 1, (text: string) => theme.bg("toolPendingBg", text));
 		this.selfRenderContainer = new Container();
+		this.headerText = new Text("", 0, 0);
+		this.bracketText = new Text("", 0, 0);
 
 		if (this.hasRendererDefinition()) {
 			this.addChild(this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox);
@@ -136,12 +159,23 @@ export class ToolExecutionComponent extends Container {
 		return new Text(theme.fg("toolTitle", theme.bold(this.toolName)), 0, 0);
 	}
 
+	private updateHeader(): void {
+		const icon = this.isPartial ? "◌" : "●";
+		this.headerText.setText(theme.fg("toolTitle", theme.bold(`${icon} ${this.toolName}`)));
+		// Keep the bracket subtle; use muted so it reads like a connector.
+		this.bracketText.setText(theme.fg("muted", "└"));
+	}
+
 	private createResultFallback(): Component | undefined {
 		const output = this.getTextOutput();
 		if (!output) {
 			return undefined;
 		}
 		return new Text(theme.fg("toolOutput", output), 0, 0);
+	}
+
+	private asPrefixedResult(component: Component): Component {
+		return new PrefixedResultComponent(component);
 	}
 
 	updateArgs(args: any): void {
@@ -234,6 +268,7 @@ export class ToolExecutionComponent extends Container {
 
 		let hasContent = false;
 		this.hideComponent = false;
+		this.updateHeader();
 		if (this.hasRendererDefinition()) {
 			const renderContainer = this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox;
 			if (renderContainer instanceof Box) {
@@ -241,20 +276,40 @@ export class ToolExecutionComponent extends Container {
 			}
 			renderContainer.clear();
 
-			const callRenderer = this.getCallRenderer();
-			if (!callRenderer) {
-				renderContainer.addChild(this.createCallFallback());
+			// Tools with renderShell "self" are expected to render their own framing. Preserve that behavior.
+			if (this.getRenderShell() !== "self") {
+				renderContainer.addChild(this.headerText);
 				hasContent = true;
-			} else {
-				try {
-					const component = callRenderer(this.args, theme, this.getRenderContext(this.callRendererComponent));
-					this.callRendererComponent = component;
-					renderContainer.addChild(component);
-					hasContent = true;
-				} catch {
+
+				// Keep legacy behavior: run the call renderer to allow tools to initialize shared render state,
+				// but do not display its output in the default shell.
+				const callRenderer = this.getCallRenderer();
+				if (callRenderer) {
+					try {
+						const component = callRenderer(this.args, theme, this.getRenderContext(this.callRendererComponent));
+						this.callRendererComponent = component;
+					} catch {
+						this.callRendererComponent = undefined;
+					}
+				} else {
 					this.callRendererComponent = undefined;
+				}
+			} else {
+				const callRenderer = this.getCallRenderer();
+				if (!callRenderer) {
 					renderContainer.addChild(this.createCallFallback());
 					hasContent = true;
+				} else {
+					try {
+						const component = callRenderer(this.args, theme, this.getRenderContext(this.callRendererComponent));
+						this.callRendererComponent = component;
+						renderContainer.addChild(component);
+						hasContent = true;
+					} catch {
+						this.callRendererComponent = undefined;
+						renderContainer.addChild(this.createCallFallback());
+						hasContent = true;
+					}
 				}
 			}
 
@@ -263,7 +318,7 @@ export class ToolExecutionComponent extends Container {
 				if (!resultRenderer) {
 					const component = this.createResultFallback();
 					if (component) {
-						renderContainer.addChild(component);
+						renderContainer.addChild(this.asPrefixedResult(component));
 						hasContent = true;
 					}
 				} else {
@@ -275,17 +330,21 @@ export class ToolExecutionComponent extends Container {
 							this.getRenderContext(this.resultRendererComponent),
 						);
 						this.resultRendererComponent = component;
-						renderContainer.addChild(component);
+						renderContainer.addChild(this.asPrefixedResult(component));
 						hasContent = true;
 					} catch {
 						this.resultRendererComponent = undefined;
 						const component = this.createResultFallback();
 						if (component) {
-							renderContainer.addChild(component);
+							renderContainer.addChild(this.asPrefixedResult(component));
 							hasContent = true;
 						}
 					}
 				}
+			} else if (this.getRenderShell() !== "self") {
+				// No result yet: show the bracket line alone.
+				renderContainer.addChild(this.bracketText);
+				hasContent = true;
 			}
 		} else {
 			this.contentText.setCustomBgFn(bgFn);
@@ -338,14 +397,18 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private formatToolExecution(): string {
-		let text = theme.fg("toolTitle", theme.bold(this.toolName));
-		const content = JSON.stringify(this.args, null, 2);
-		if (content) {
-			text += `\n\n${content}`;
-		}
+		// Fallback formatting (when no tool definition exists): tool name, bracket, then output.
+		const icon = this.isPartial ? "◌" : "●";
 		const output = this.getTextOutput();
-		if (output) {
-			text += `\n${output}`;
+		if (!output) {
+			return `${theme.fg("toolTitle", theme.bold(`${icon} ${this.toolName}`))}\n${theme.fg("muted", "└")}`;
+		}
+		const lines = output.split("\n");
+		const first = lines[0] ?? "";
+		const rest = lines.slice(1);
+		let text = `${theme.fg("toolTitle", theme.bold(`${icon} ${this.toolName}`))}\n${theme.fg("muted", `└ ${first}`)}`;
+		if (rest.length > 0) {
+			text += `\n${rest.map((l) => theme.fg("toolOutput", `  ${l}`)).join("\n")}`;
 		}
 		return text;
 	}

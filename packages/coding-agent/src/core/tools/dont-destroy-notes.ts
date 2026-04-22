@@ -34,7 +34,7 @@ function formatResultText(
 	const maxLines = options.expanded ? lines.length : 60;
 	const displayLines = lines.slice(0, maxLines);
 	const remaining = lines.length - maxLines;
-	let text = `\n${displayLines.map((l) => theme.fg("toolOutput", l)).join("\n")}`;
+	let text = `${displayLines.map((l) => theme.fg("toolOutput", l)).join("\n")}`;
 	if (remaining > 0) text += theme.fg("muted", `\n... (${remaining} more lines)`);
 	return text;
 }

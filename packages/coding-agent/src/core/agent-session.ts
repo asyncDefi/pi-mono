@@ -304,6 +304,13 @@ export class AgentSession {
 	private _baseSystemPrompt = "";
 	private _baseSystemPromptOptions!: BuildSystemPromptOptions;
 
+	// =========================================================================
+	// Skills context lifecycle (active subset + short history)
+	// =========================================================================
+	private static readonly SKILLS_CONTEXT_CUSTOM_TYPE = "pi.skills_context";
+	private _activeSkillNames: Set<string> = new Set();
+	private _skillsContextHistory: Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> = [];
+
 	constructor(config: AgentSessionConfig) {
 		this.agent = config.agent;
 		this.sessionManager = config.sessionManager;
@@ -324,10 +331,107 @@ export class AgentSession {
 		this._unsubscribeAgent = this.agent.subscribe(this._handleAgentEvent);
 		this._installAgentToolHooks();
 
+		this._restoreSkillsContextFromSession();
+
 		this._buildRuntime({
 			activeToolNames: this._initialActiveToolNames,
 			includeAllExtensionTools: true,
 		});
+	}
+
+	private _restoreSkillsContextFromSession(): void {
+		const entries = this.sessionManager.getEntries();
+		const history: Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> = [];
+		const active = new Set<string>();
+
+		for (const entry of entries) {
+			if (entry.type !== "custom") continue;
+			if (entry.customType !== AgentSession.SKILLS_CONTEXT_CUSTOM_TYPE) continue;
+			const data = entry.data as { action?: unknown; name?: unknown } | undefined;
+			const action = data?.action;
+			const name = data?.name;
+			if ((action !== "loaded" && action !== "unloaded") || typeof name !== "string" || name.trim() === "") {
+				continue;
+			}
+			const normalizedName = name.trim();
+			if (action === "loaded") {
+				active.add(normalizedName);
+			} else {
+				active.delete(normalizedName);
+			}
+			history.push({ timestamp: entry.timestamp, action, name: normalizedName });
+		}
+
+		this._activeSkillNames = active;
+		this._skillsContextHistory = history.slice(-5);
+	}
+
+	private _recordSkillsContextEvent(action: "loaded" | "unloaded", name: string): void {
+		const timestamp = new Date().toISOString();
+		this._skillsContextHistory = [...this._skillsContextHistory, { timestamp, action, name }].slice(-5);
+		this.sessionManager.appendCustomEntry(AgentSession.SKILLS_CONTEXT_CUSTOM_TYPE, { action, name });
+	}
+
+	private _getDiscoveredSkillByName(name: string) {
+		const normalized = name.trim();
+		if (!normalized) return undefined;
+		return this._resourceLoader.getSkills().skills.find((s) => s.name === normalized);
+	}
+
+	private _syncActiveSkillsWithDiscovery(): void {
+		const discovered = new Set(this._resourceLoader.getSkills().skills.map((s) => s.name));
+		const toRemove: string[] = [];
+		for (const name of this._activeSkillNames) {
+			if (!discovered.has(name)) {
+				toRemove.push(name);
+			}
+		}
+		for (const name of toRemove) {
+			this._activeSkillNames.delete(name);
+			this._recordSkillsContextEvent("unloaded", name);
+		}
+	}
+
+	private _loadSkillIntoContext(name: string): { loaded: boolean; alreadyLoaded: boolean } {
+		const normalized = name.trim();
+		if (!normalized) {
+			throw new Error("Skill name is required");
+		}
+		const discovered = this._getDiscoveredSkillByName(normalized);
+		if (!discovered) {
+			throw new Error(`Unknown skill: ${normalized}`);
+		}
+		if (this._activeSkillNames.has(discovered.name)) {
+			return { loaded: false, alreadyLoaded: true };
+		}
+		this._activeSkillNames.add(discovered.name);
+		this._recordSkillsContextEvent("loaded", discovered.name);
+		this._baseSystemPrompt = this._rebuildSystemPrompt(this.getActiveToolNames());
+		this.agent.state.systemPrompt = this._baseSystemPrompt;
+		return { loaded: true, alreadyLoaded: false };
+	}
+
+	private _unloadSkillFromContext(name: string): { unloaded: boolean; wasLoaded: boolean } {
+		const normalized = name.trim();
+		if (!normalized) {
+			throw new Error("Skill name is required");
+		}
+		const wasLoaded = this._activeSkillNames.delete(normalized);
+		if (!wasLoaded) {
+			return { unloaded: false, wasLoaded: false };
+		}
+		this._recordSkillsContextEvent("unloaded", normalized);
+		this._baseSystemPrompt = this._rebuildSystemPrompt(this.getActiveToolNames());
+		this.agent.state.systemPrompt = this._baseSystemPrompt;
+		return { unloaded: true, wasLoaded: true };
+	}
+
+	private _listActiveSkills(): string[] {
+		return Array.from(this._activeSkillNames.values()).sort((a, b) => a.localeCompare(b));
+	}
+
+	private _getSkillsContextHistory(): Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> {
+		return [...this._skillsContextHistory];
 	}
 
 	/** Model registry for API key resolution and model discovery */
@@ -909,7 +1013,9 @@ export class AgentSession {
 		const loaderAppendSystemPrompt = this._resourceLoader.getAppendSystemPrompt();
 		const appendSystemPrompt =
 			loaderAppendSystemPrompt.length > 0 ? loaderAppendSystemPrompt.join("\n\n") : undefined;
-		const loadedSkills = this._resourceLoader.getSkills().skills;
+		const loadedSkills = this._resourceLoader
+			.getSkills()
+			.skills.filter((s) => this._activeSkillNames.has(s.name));
 		const loadedContextFiles = this._resourceLoader.getAgentsFiles().agentsFiles;
 
 		this._baseSystemPromptOptions = {
@@ -2216,6 +2322,10 @@ export class AgentSession {
 					})();
 				},
 				getSystemPrompt: () => this.systemPrompt,
+				skillsContextLoad: (name) => this._loadSkillIntoContext(name),
+				skillsContextUnload: (name) => this._unloadSkillFromContext(name),
+				skillsContextListActive: () => this._listActiveSkills(),
+				skillsContextHistory: () => this._getSkillsContextHistory(),
 			},
 			{
 				registerProvider: (name, config) => {
@@ -2367,7 +2477,7 @@ export class AgentSession {
 
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)
-			: ["read", "bash", "edit", "write"];
+			: ["read", "bash", "edit", "write", "skills_context"];
 		const baseActiveToolNames = options.activeToolNames ?? defaultActiveToolNames;
 		this._refreshToolRegistry({
 			activeToolNames: baseActiveToolNames,
@@ -2381,6 +2491,7 @@ export class AgentSession {
 		await this.settingsManager.reload();
 		resetApiProviders();
 		await this._resourceLoader.reload();
+		this._syncActiveSkillsWithDiscovery();
 		this._buildRuntime({
 			activeToolNames: this.getActiveToolNames(),
 			flagValues: previousFlagValues,

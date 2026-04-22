@@ -299,6 +299,20 @@ export interface ExtensionContext {
 	cwd: string;
 	/** Session manager (read-only) */
 	sessionManager: ReadonlySessionManager;
+	/**
+	 * Manage the set of skills that are currently included in the LLM context.
+	 * This is distinct from skill discovery (which may find many skills on disk).
+	 */
+	skillsContext: {
+		/** Load a discovered skill into the active context set (by name). */
+		load: (name: string) => { loaded: boolean; alreadyLoaded: boolean };
+		/** Unload a skill from the active context set (by name). */
+		unload: (name: string) => { unloaded: boolean; wasLoaded: boolean };
+		/** List active skill names currently included in context. */
+		listActive: () => string[];
+		/** Get last N lifecycle events (newest last). */
+		history: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }>;
+	};
 	/** Model registry for API key resolution */
 	modelRegistry: ModelRegistry;
 	/** Current model (may be undefined) */
@@ -1475,6 +1489,10 @@ export interface ExtensionContextActions {
 	getContextUsage: () => ContextUsage | undefined;
 	compact: (options?: CompactOptions) => void;
 	getSystemPrompt: () => string;
+	skillsContextLoad: (name: string) => { loaded: boolean; alreadyLoaded: boolean };
+	skillsContextUnload: (name: string) => { unloaded: boolean; wasLoaded: boolean };
+	skillsContextListActive: () => string[];
+	skillsContextHistory: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }>;
 }
 
 /**

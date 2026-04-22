@@ -233,6 +233,17 @@ export class ExtensionRunner {
 	private getContextUsageFn: () => ContextUsage | undefined = () => undefined;
 	private compactFn: (options?: CompactOptions) => void = () => {};
 	private getSystemPromptFn: () => string = () => "";
+	private skillsContextLoadFn: (name: string) => { loaded: boolean; alreadyLoaded: boolean } = () => ({
+		loaded: false,
+		alreadyLoaded: false,
+	});
+	private skillsContextUnloadFn: (name: string) => { unloaded: boolean; wasLoaded: boolean } = () => ({
+		unloaded: false,
+		wasLoaded: false,
+	});
+	private skillsContextListActiveFn: () => string[] = () => [];
+	private skillsContextHistoryFn: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> =
+		() => [];
 	private newSessionHandler: NewSessionHandler = async () => ({ cancelled: false });
 	private forkHandler: ForkHandler = async () => ({ cancelled: false });
 	private navigateTreeHandler: NavigateTreeHandler = async () => ({ cancelled: false });
@@ -292,6 +303,10 @@ export class ExtensionRunner {
 		this.getContextUsageFn = contextActions.getContextUsage;
 		this.compactFn = contextActions.compact;
 		this.getSystemPromptFn = contextActions.getSystemPrompt;
+		this.skillsContextLoadFn = contextActions.skillsContextLoad;
+		this.skillsContextUnloadFn = contextActions.skillsContextUnload;
+		this.skillsContextListActiveFn = contextActions.skillsContextListActive;
+		this.skillsContextHistoryFn = contextActions.skillsContextHistory;
 
 		// Flush provider registrations queued during extension loading
 		for (const { name, config, extensionPath } of this.runtime.pendingProviderRegistrations) {
@@ -582,6 +597,15 @@ export class ExtensionRunner {
 			get sessionManager() {
 				runner.assertActive();
 				return runner.sessionManager;
+			},
+			get skillsContext() {
+				runner.assertActive();
+				return {
+					load: (name: string) => runner.skillsContextLoadFn(name),
+					unload: (name: string) => runner.skillsContextUnloadFn(name),
+					listActive: () => runner.skillsContextListActiveFn(),
+					history: () => runner.skillsContextHistoryFn(),
+				};
 			},
 			get modelRegistry() {
 				runner.assertActive();

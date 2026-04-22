@@ -126,6 +126,9 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	// Always include these
 	addGuideline("Be concise in your responses");
 	addGuideline("Show file paths clearly when working with files");
+	addGuideline(
+		"Load/unload skills into context with skills_context as needed; keep only relevant skills active to avoid bloating context",
+	);
 
 	const guidelines = guidelinesList.map((g) => `- ${g}`).join("\n");
 

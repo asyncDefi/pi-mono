@@ -64,11 +64,23 @@ For project-level Claude Code skills, add to `.pi/settings.json`:
 ## How Skills Work
 
 1. At startup, pi scans skill locations and extracts names and descriptions
-2. The system prompt includes available skills in XML format per the [specification](https://agentskills.io/integrate-skills)
+2. The system prompt can include skills in XML format per the [specification](https://agentskills.io/integrate-skills)
 3. When a task matches, the agent uses `read` to load the full SKILL.md (models don't always do this; use prompting or `/skill:name` to force it)
 4. The agent follows the instructions, using relative paths to reference scripts and assets
 
 This is progressive disclosure: only descriptions are always in context, full instructions load on-demand.
+
+## Dynamic Skill Context (load/unload)
+
+Pi also supports dynamically controlling which discovered skills are included in the LLM context to avoid bloating the system prompt.
+
+- **Tool**: `skills_context`
+  - **load**: add a discovered skill (by `name`) to the active context set
+  - **unload**: remove a skill from the active context set
+  - **list_active**: list currently active skills
+  - **history**: show the last 5 load/unload events (timestamped)
+
+Only **active** skills are included in the system prompt. Skills are still invokable explicitly via `/skill:name` regardless of whether they are active.
 
 ## Skill Commands
 

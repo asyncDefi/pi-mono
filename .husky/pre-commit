@@ -3,9 +3,22 @@
 # Get list of staged files before running check
 STAGED_FILES=$(git diff --cached --name-only)
 
+# On Windows, hooks may run under sh (Git Bash) with a stripped PATH, where `npm`
+# isn't discoverable. Calling through cmd.exe reliably resolves npm.cmd.
+run_npm() {
+  if command -v cmd.exe >/dev/null 2>&1; then
+    cmd.exe /c "npm %*"
+  elif command -v npm >/dev/null 2>&1; then
+    npm "$@"
+  else
+    echo "❌ npm not found. Ensure Node.js is installed and npm is on PATH."
+    exit 1
+  fi
+}
+
 # Run the check script (formatting, linting, and type checking)
 echo "Running formatting, linting, and type checking..."
-npm run check
+run_npm run check
 if [ $? -ne 0 ]; then
   echo "❌ Checks failed. Please fix the errors before committing."
   exit 1
@@ -23,7 +36,7 @@ done
 
 if [ $RUN_BROWSER_SMOKE -eq 1 ]; then
   echo "Running browser smoke check..."
-  npm run check:browser-smoke
+  run_npm run check:browser-smoke
   if [ $? -ne 0 ]; then
     echo "❌ Browser smoke check failed."
     exit 1

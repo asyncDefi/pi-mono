@@ -41,6 +41,7 @@ import {
 import { spawn, spawnSync } from "child_process";
 import {
 	APP_NAME,
+	CONFIG_DIR_NAME,
 	getAgentDir,
 	getAuthPath,
 	getDebugLogPath,
@@ -2388,6 +2389,11 @@ export class InteractiveMode {
 				await this.showModelsSelector();
 				return;
 			}
+			if (text === "/context-snapshot") {
+				this.editor.setText("");
+				await this.handleContextSnapshotCommand();
+				return;
+			}
 			if (text === "/model" || text.startsWith("/model ")) {
 				const searchTerm = text.startsWith("/model ") ? text.slice(7).trim() : undefined;
 				this.editor.setText("");
@@ -2551,6 +2557,42 @@ export class InteractiveMode {
 			}
 			this.editor.addToHistory?.(text);
 		};
+	}
+
+	private async handleContextSnapshotCommand(): Promise<void> {
+		const cwd = this.sessionManager.getCwd();
+		const now = new Date();
+		const yyyy = String(now.getFullYear());
+		const mm = String(now.getMonth() + 1).padStart(2, "0");
+		const dd = String(now.getDate()).padStart(2, "0");
+		const date = `${yyyy}-${mm}-${dd}`;
+		const id = crypto.randomUUID();
+
+		const snapshotsDir = path.join(cwd, CONFIG_DIR_NAME, "context-snapshots", `${date}-${id}`);
+		fs.mkdirSync(snapshotsDir, { recursive: true });
+
+		const meta = {
+			createdAt: now.toISOString(),
+			cwd,
+			sessionId: this.session.sessionId,
+			sessionName: this.session.sessionName,
+			model: this.session.model
+				? { provider: this.session.model.provider, id: this.session.model.id }
+				: null,
+			thinkingLevel: this.session.thinkingLevel,
+			activeTools: this.session.getActiveToolNames(),
+		};
+
+		fs.writeFileSync(path.join(snapshotsDir, "meta.json"), JSON.stringify(meta, null, 2), "utf-8");
+		fs.writeFileSync(path.join(snapshotsDir, "system-prompt.txt"), this.session.systemPrompt, "utf-8");
+		fs.writeFileSync(path.join(snapshotsDir, "messages.json"), JSON.stringify(this.session.messages, null, 2), "utf-8");
+		fs.writeFileSync(
+			path.join(snapshotsDir, "tool-definitions.json"),
+			JSON.stringify(this.session.getAllTools(), null, 2),
+			"utf-8",
+		);
+
+		this.showStatus(`Saved context snapshot to ${snapshotsDir}`);
 	}
 
 	private subscribeToAgent(): void {

@@ -11,6 +11,42 @@ packages/*/dist-firefox/
 
 # Environment
 .env
+.env.*
+!.env.example
+!.env.template
+
+# Credentials / secrets
+.npmrc
+.yarnrc.yml
+.pnpmfile.cjs
+.git-credentials
+**/credentials*.json
+**/secrets*.json
+**/*secret*.json
+**/*token*.json
+
+# Cloud provider credentials
+**/.aws/
+**/.azure/
+**/.gcp/
+**/gcloud/
+
+# Private keys / certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_ed25519
+**/ssh_config
+**/.ssh/
+
+# Local databases (often contain real data)
+*.sqlite
+*.sqlite3
+*.db
 
 # Editor files
 .vscode/
@@ -25,6 +61,7 @@ packages/*/dist-firefox/
 coverage/
 .nyc_output/
 .pi_config/
+.pi/
 tui-debug.log
 compaction-results/
 .opencode/
@@ -35,6 +72,4 @@ out.html
 packages/coding-agent/binaries/
 todo.md
 plans/
-.pi/hf-sessions/
-.pi/hf-sessions-backup/
 collect.sh

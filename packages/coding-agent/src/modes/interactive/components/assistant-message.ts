@@ -1,10 +1,11 @@
 import type { AssistantMessage } from "@mariozechner/pi-ai";
-import { type Component, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@mariozechner/pi-tui";
+import { type Component, Container, Markdown, type MarkdownTheme, Spacer, Text, type TUI } from "@mariozechner/pi-tui";
 import { getMarkdownTheme, theme } from "../theme/theme.js";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
 const OSC133_ZONE_END = "\x1b]133;B\x07";
 const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
+const SPINNER_FRAMES = ["·", "•", "●", "•"];
 
 class ThinkingBox extends Container {
 	private borderColor: (text: string) => string;
@@ -29,14 +30,26 @@ class ThinkingBox extends Container {
 		if (contentLines.length === 0) return [];
 
 		const result: string[] = [];
-		// Header with bullet and thinking level color
-		result.push(`${this.borderColor("•")} ${theme.italic(theme.fg("thinkingText", "Thinking"))}`);
+
+		// Determine bullet character: spinner if streaming, static bullet if finished
+		const spinnerIndex = Math.floor(Date.now() / 150) % SPINNER_FRAMES.length;
+		const bullet = this.isStreaming ? SPINNER_FRAMES[spinnerIndex] : "•";
+
+		// Determine colors: use primary color while streaming, dim gray when finished
+		const bulletColor = this.isStreaming ? this.borderColor : (s: string) => theme.fg("dim", s);
+		const labelColor = this.isStreaming
+			? (s: string) => theme.fg("thinkingText", s)
+			: (s: string) => theme.fg("dim", s);
+		const branchColor = this.isStreaming ? this.borderColor : (s: string) => theme.fg("dim", s);
+
+		// Header with bullet/spinner
+		result.push(`${bulletColor(bullet)} ${theme.italic(labelColor("Thinking"))}`);
 
 		// Tree-like structure for content
 		for (let i = 0; i < contentLines.length; i++) {
 			const isLast = i === contentLines.length - 1;
 			const prefix = isLast ? "└─ " : "│  ";
-			result.push(this.borderColor(prefix) + contentLines[i]);
+			result.push(branchColor(prefix) + contentLines[i]);
 		}
 
 		return result;
@@ -54,18 +67,22 @@ export class AssistantMessageComponent extends Container {
 	private lastMessage?: AssistantMessage;
 	private lastIsStreaming = false;
 	private hasToolCalls = false;
+	private tui?: TUI;
+	private animationTimer?: NodeJS.Timeout;
 
 	constructor(
 		message?: AssistantMessage,
 		hideThinkingBlock = false,
 		markdownTheme: MarkdownTheme = getMarkdownTheme(),
 		hiddenThinkingLabel = "Thinking...",
+		tui?: TUI,
 	) {
 		super();
 
 		this.hideThinkingBlock = hideThinkingBlock;
 		this.markdownTheme = markdownTheme;
 		this.hiddenThinkingLabel = hiddenThinkingLabel;
+		this.tui = tui;
 
 		// Container for text/thinking content
 		this.contentContainer = new Container();
@@ -111,6 +128,19 @@ export class AssistantMessageComponent extends Container {
 	updateContent(message: AssistantMessage, isStreaming = false): void {
 		this.lastMessage = message;
 		this.lastIsStreaming = isStreaming;
+
+		// Handle animation timer for thinking spinner
+		const hasActiveThinking =
+			isStreaming && message.content.some((c, i) => c.type === "thinking" && i === message.content.length - 1);
+
+		if (hasActiveThinking && this.tui && !this.animationTimer) {
+			this.animationTimer = setInterval(() => {
+				this.tui?.requestRender();
+			}, 150);
+		} else if (!hasActiveThinking && this.animationTimer) {
+			clearInterval(this.animationTimer);
+			this.animationTimer = undefined;
+		}
 
 		// Clear content container
 		this.contentContainer.clear();
@@ -159,14 +189,16 @@ export class AssistantMessageComponent extends Container {
 						this.contentContainer.addChild(new Spacer(1));
 					}
 				} else if (content.thinking.trim() || (isStreaming && i === message.content.length - 1)) {
-					// Thinking traces in a bordered box
+					// Thinking traces in a tree-like box.
+					// Dim the content if it's no longer streaming.
+					const isCurrentThinking = isStreaming && i === message.content.length - 1;
 					const box = new ThinkingBox(
 						new Markdown(content.thinking.trim(), 0, 0, this.markdownTheme, {
-							color: (text: string) => theme.fg("thinkingText", text),
+							color: (text: string) => theme.fg(isCurrentThinking ? "thinkingText" : "dim", text),
 							italic: true,
 						}),
 						theme.getThinkingBorderColor("medium"),
-						isStreaming && i === message.content.length - 1,
+						isCurrentThinking,
 					);
 					this.contentContainer.addChild(box);
 					if (hasVisibleContentAfter) {

@@ -311,6 +311,15 @@ export class AgentSession {
 	private _activeSkillNames: Set<string> = new Set();
 	private _skillsContextHistory: Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> = [];
 
+	// =========================================================================
+	// Dont-destroy notes (persisted, never compacted)
+	// =========================================================================
+	private static readonly DONT_DESTROY_CUSTOM_TYPE = "pi.dont_destroy";
+	private static readonly DONT_DESTROY_SLOT_LIMITS = [700, 400, 250, 200, 170, 150, 130] as const; // sum=2000
+	private _dontDestroyNotes: Array<string | null> = new Array(7).fill(null);
+	private _dontDestroyHistory: Array<{ timestamp: string; action: "set" | "clear" | "clear_all"; slot?: number }> =
+		[];
+
 	constructor(config: AgentSessionConfig) {
 		this.agent = config.agent;
 		this.sessionManager = config.sessionManager;
@@ -332,6 +341,7 @@ export class AgentSession {
 		this._installAgentToolHooks();
 
 		this._restoreSkillsContextFromSession();
+		this._restoreDontDestroyNotesFromSession();
 
 		this._buildRuntime({
 			activeToolNames: this._initialActiveToolNames,
@@ -370,6 +380,108 @@ export class AgentSession {
 		const timestamp = new Date().toISOString();
 		this._skillsContextHistory = [...this._skillsContextHistory, { timestamp, action, name }].slice(-5);
 		this.sessionManager.appendCustomEntry(AgentSession.SKILLS_CONTEXT_CUSTOM_TYPE, { action, name });
+	}
+
+	private _restoreDontDestroyNotesFromSession(): void {
+		const entries = this.sessionManager.getEntries();
+		const notes: Array<string | null> = new Array(7).fill(null);
+		const history: Array<{ timestamp: string; action: "set" | "clear" | "clear_all"; slot?: number }> = [];
+
+		for (const entry of entries) {
+			if (entry.type !== "custom") continue;
+			if (entry.customType !== AgentSession.DONT_DESTROY_CUSTOM_TYPE) continue;
+
+			const data = entry.data as { action?: unknown; slot?: unknown; text?: unknown } | undefined;
+			const action = data?.action;
+			const slotRaw = data?.slot;
+
+			if (action === "clear_all") {
+				for (let i = 0; i < notes.length; i++) notes[i] = null;
+				history.push({ timestamp: entry.timestamp, action: "clear_all" });
+				continue;
+			}
+
+			const slot = typeof slotRaw === "number" ? slotRaw : undefined;
+			if (!slot || slot < 1 || slot > 7) {
+				continue;
+			}
+
+			if (action === "clear") {
+				notes[slot - 1] = null;
+				history.push({ timestamp: entry.timestamp, action: "clear", slot });
+				continue;
+			}
+
+			if (action === "set") {
+				const text = typeof data?.text === "string" ? data.text : "";
+				const limit = AgentSession.DONT_DESTROY_SLOT_LIMITS[slot - 1];
+				const trimmed = text.trim();
+				notes[slot - 1] = trimmed.length > 0 ? trimmed.slice(0, limit) : null;
+				history.push({ timestamp: entry.timestamp, action: "set", slot });
+				continue;
+			}
+		}
+
+		this._dontDestroyNotes = notes;
+		this._dontDestroyHistory = history.slice(-5);
+	}
+
+	private _setDontDestroyNote(slot: number, text: string): { set: boolean; truncated: boolean; limit: number } {
+		if (!Number.isInteger(slot) || slot < 1 || slot > 7) {
+			throw new Error("slot must be an integer in range 1..7");
+		}
+		const limit = AgentSession.DONT_DESTROY_SLOT_LIMITS[slot - 1];
+		const trimmed = (text ?? "").trim();
+		const truncatedText = trimmed.slice(0, limit);
+		const truncated = trimmed.length > truncatedText.length;
+
+		this._dontDestroyNotes[slot - 1] = truncatedText.length > 0 ? truncatedText : null;
+		this.sessionManager.appendCustomEntry(AgentSession.DONT_DESTROY_CUSTOM_TYPE, {
+			action: "set",
+			slot,
+			text: truncatedText,
+		});
+		const event = { timestamp: new Date().toISOString(), action: "set" as const, slot };
+		this._dontDestroyHistory = [...this._dontDestroyHistory, event].slice(-5);
+		this._baseSystemPrompt = this._rebuildSystemPrompt(this.getActiveToolNames());
+		this.agent.state.systemPrompt = this._baseSystemPrompt;
+
+		return { set: true, truncated, limit };
+	}
+
+	private _clearDontDestroyNote(slot: number): { cleared: boolean } {
+		if (!Number.isInteger(slot) || slot < 1 || slot > 7) {
+			throw new Error("slot must be an integer in range 1..7");
+		}
+		this._dontDestroyNotes[slot - 1] = null;
+		this.sessionManager.appendCustomEntry(AgentSession.DONT_DESTROY_CUSTOM_TYPE, { action: "clear", slot });
+		const event = { timestamp: new Date().toISOString(), action: "clear" as const, slot };
+		this._dontDestroyHistory = [...this._dontDestroyHistory, event].slice(-5);
+		this._baseSystemPrompt = this._rebuildSystemPrompt(this.getActiveToolNames());
+		this.agent.state.systemPrompt = this._baseSystemPrompt;
+		return { cleared: true };
+	}
+
+	private _clearAllDontDestroyNotes(): { cleared: boolean } {
+		for (let i = 0; i < this._dontDestroyNotes.length; i++) this._dontDestroyNotes[i] = null;
+		this.sessionManager.appendCustomEntry(AgentSession.DONT_DESTROY_CUSTOM_TYPE, { action: "clear_all" });
+		const event = { timestamp: new Date().toISOString(), action: "clear_all" as const };
+		this._dontDestroyHistory = [...this._dontDestroyHistory, event].slice(-5);
+		this._baseSystemPrompt = this._rebuildSystemPrompt(this.getActiveToolNames());
+		this.agent.state.systemPrompt = this._baseSystemPrompt;
+		return { cleared: true };
+	}
+
+	private _listDontDestroyNotes(): Array<{ slot: number; text: string | null; limit: number }> {
+		return this._dontDestroyNotes.map((text, idx) => ({
+			slot: idx + 1,
+			text,
+			limit: AgentSession.DONT_DESTROY_SLOT_LIMITS[idx],
+		}));
+	}
+
+	private _getDontDestroyHistory(): Array<{ timestamp: string; action: "set" | "clear" | "clear_all"; slot?: number }> {
+		return [...this._dontDestroyHistory];
 	}
 
 	private _getDiscoveredSkillByName(name: string) {
@@ -1024,6 +1136,7 @@ export class AgentSession {
 			contextFiles: loadedContextFiles,
 			customPrompt: loaderSystemPrompt,
 			appendSystemPrompt,
+			dontDestroyNotes: [...this._dontDestroyNotes],
 			selectedTools: validToolNames,
 			toolSnippets,
 			promptGuidelines,
@@ -2326,6 +2439,11 @@ export class AgentSession {
 				skillsContextUnload: (name) => this._unloadSkillFromContext(name),
 				skillsContextListActive: () => this._listActiveSkills(),
 				skillsContextHistory: () => this._getSkillsContextHistory(),
+				dontDestroyNotesSet: (slot, text) => this._setDontDestroyNote(slot, text),
+				dontDestroyNotesClear: (slot) => this._clearDontDestroyNote(slot),
+				dontDestroyNotesClearAll: () => this._clearAllDontDestroyNotes(),
+				dontDestroyNotesList: () => this._listDontDestroyNotes(),
+				dontDestroyNotesHistory: () => this._getDontDestroyHistory(),
 			},
 			{
 				registerProvider: (name, config) => {
@@ -2477,7 +2595,7 @@ export class AgentSession {
 
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)
-			: ["read", "bash", "edit", "write", "skills_context"];
+			: ["read", "bash", "edit", "write", "skills_context", "dont_destroy_notes"];
 		const baseActiveToolNames = options.activeToolNames ?? defaultActiveToolNames;
 		this._refreshToolRegistry({
 			activeToolNames: baseActiveToolNames,

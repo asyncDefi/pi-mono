@@ -22,6 +22,26 @@ export interface BuildSystemPromptOptions {
 	contextFiles?: Array<{ path: string; content: string }>;
 	/** Pre-loaded skills. */
 	skills?: Skill[];
+	/** Persisted notes that must not be lost to compaction (7 slots). */
+	dontDestroyNotes?: Array<string | null>;
+}
+
+const DONT_DESTROY_SLOT_LIMITS = [700, 400, 250, 200, 170, 150, 130] as const; // sum=2000
+
+function formatDontDestroySection(notes: Array<string | null> | undefined): string {
+	const slots = notes && notes.length === 7 ? notes : new Array<string | null>(7).fill(null);
+	const lines: string[] = [
+		"|<DONT-DESTROY>|",
+		"These notes must NEVER be removed or summarized away (even during compaction).",
+		"Maintain at most 7 slots. Slot 1 has the largest character budget; slot 7 the smallest.",
+		"",
+	];
+	for (let i = 0; i < 7; i++) {
+		const limit = DONT_DESTROY_SLOT_LIMITS[i];
+		const text = slots[i] ?? "(empty)";
+		lines.push(`[${i + 1}] (max ${limit} chars) ${text}`);
+	}
+	return lines.join("\n");
 }
 
 /** Build the system prompt with tools, guidelines, and context */
@@ -35,6 +55,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 		cwd,
 		contextFiles: providedContextFiles,
 		skills: providedSkills,
+		dontDestroyNotes,
 	} = options;
 	const resolvedCwd = cwd;
 	const promptCwd = resolvedCwd.replace(/\\/g, "/");
@@ -57,6 +78,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	const toolsList =
 		visibleTools.length > 0 ? visibleTools.map((name) => `- ${name}: ${toolSnippets![name]}`).join("\n") : "(none)";
 	const toolsSection = `Available tools:\n${toolsList}`;
+	const dontDestroySection = formatDontDestroySection(dontDestroyNotes);
 
 	const hasRead = tools.includes("read");
 
@@ -85,7 +107,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 		soul += `\nCurrent date: ${date}`;
 		soul += `\nCurrent working directory: ${promptCwd}`;
 
-		return `|<SOUL>|\n${soul}\n\n|<Tools>|\n${toolsSection}`;
+		return `|<SOUL>|\n${soul}\n\n|<Tools>|\n${toolsSection}\n\n${dontDestroySection}`;
 	}
 
 	// Get absolute paths to documentation and examples
@@ -129,6 +151,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	addGuideline(
 		"Load/unload skills into context with skills_context as needed; keep only relevant skills active to avoid bloating context",
 	);
+	addGuideline("Use dont_destroy_notes to maintain short durable notes across compaction (7 slots, 2000 chars total)");
 
 	const guidelines = guidelinesList.map((g) => `- ${g}`).join("\n");
 
@@ -167,5 +190,5 @@ Pi documentation (read only when the user asks about pi itself, its SDK, extensi
 	soul += `\nCurrent date: ${date}`;
 	soul += `\nCurrent working directory: ${promptCwd}`;
 
-	return `|<SOUL>|\n${soul}\n\n|<Tools>|\n${toolsSection}`;
+	return `|<SOUL>|\n${soul}\n\n|<Tools>|\n${toolsSection}\n\n${dontDestroySection}`;
 }

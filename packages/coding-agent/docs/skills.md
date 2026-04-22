@@ -82,6 +82,19 @@ Pi also supports dynamically controlling which discovered skills are included in
 
 Only **active** skills are included in the system prompt. Skills are still invokable explicitly via `/skill:name` regardless of whether they are active.
 
+## Durable Notes (|<DONT-DESTROY>|)
+
+Pi can maintain a small set of durable notes that are injected into the **system prompt** and therefore **never lost during session compaction**.
+
+- **Tool**: `dont_destroy_notes`
+  - `set` (`slot` 1..7 + `text`)
+  - `clear` (`slot` 1..7)
+  - `clear_all`
+  - `list`
+  - `history` (last 5 events)
+
+Notes are capped at 7 slots and a total budget of 2000 characters with decreasing per-slot limits (slot 1 largest → slot 7 smallest).
+
 ## Skill Commands
 
 Skills register as `/skill:name` commands:

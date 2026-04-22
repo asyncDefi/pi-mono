@@ -313,6 +313,14 @@ export interface ExtensionContext {
 		/** Get last N lifecycle events (newest last). */
 		history: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }>;
 	};
+	/** Manage durable notes included in the system prompt (not compacted). */
+	dontDestroyNotes: {
+		set: (slot: number, text: string) => { set: boolean; truncated: boolean; limit: number };
+		clear: (slot: number) => { cleared: boolean };
+		clearAll: () => { cleared: boolean };
+		list: () => Array<{ slot: number; text: string | null; limit: number }>;
+		history: () => Array<{ timestamp: string; action: "set" | "clear" | "clear_all"; slot?: number }>;
+	};
 	/** Model registry for API key resolution */
 	modelRegistry: ModelRegistry;
 	/** Current model (may be undefined) */
@@ -1493,6 +1501,11 @@ export interface ExtensionContextActions {
 	skillsContextUnload: (name: string) => { unloaded: boolean; wasLoaded: boolean };
 	skillsContextListActive: () => string[];
 	skillsContextHistory: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }>;
+	dontDestroyNotesSet: (slot: number, text: string) => { set: boolean; truncated: boolean; limit: number };
+	dontDestroyNotesClear: (slot: number) => { cleared: boolean };
+	dontDestroyNotesClearAll: () => { cleared: boolean };
+	dontDestroyNotesList: () => Array<{ slot: number; text: string | null; limit: number }>;
+	dontDestroyNotesHistory: () => Array<{ timestamp: string; action: "set" | "clear" | "clear_all"; slot?: number }>;
 }
 
 /**

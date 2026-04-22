@@ -244,6 +244,13 @@ export class ExtensionRunner {
 	private skillsContextListActiveFn: () => string[] = () => [];
 	private skillsContextHistoryFn: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> =
 		() => [];
+	private dontDestroyNotesSetFn: (slot: number, text: string) => { set: boolean; truncated: boolean; limit: number } =
+		() => ({ set: false, truncated: false, limit: 0 });
+	private dontDestroyNotesClearFn: (slot: number) => { cleared: boolean } = () => ({ cleared: false });
+	private dontDestroyNotesClearAllFn: () => { cleared: boolean } = () => ({ cleared: false });
+	private dontDestroyNotesListFn: () => Array<{ slot: number; text: string | null; limit: number }> = () => [];
+	private dontDestroyNotesHistoryFn: () => Array<{ timestamp: string; action: "set" | "clear" | "clear_all"; slot?: number }> =
+		() => [];
 	private newSessionHandler: NewSessionHandler = async () => ({ cancelled: false });
 	private forkHandler: ForkHandler = async () => ({ cancelled: false });
 	private navigateTreeHandler: NavigateTreeHandler = async () => ({ cancelled: false });
@@ -307,6 +314,11 @@ export class ExtensionRunner {
 		this.skillsContextUnloadFn = contextActions.skillsContextUnload;
 		this.skillsContextListActiveFn = contextActions.skillsContextListActive;
 		this.skillsContextHistoryFn = contextActions.skillsContextHistory;
+		this.dontDestroyNotesSetFn = contextActions.dontDestroyNotesSet;
+		this.dontDestroyNotesClearFn = contextActions.dontDestroyNotesClear;
+		this.dontDestroyNotesClearAllFn = contextActions.dontDestroyNotesClearAll;
+		this.dontDestroyNotesListFn = contextActions.dontDestroyNotesList;
+		this.dontDestroyNotesHistoryFn = contextActions.dontDestroyNotesHistory;
 
 		// Flush provider registrations queued during extension loading
 		for (const { name, config, extensionPath } of this.runtime.pendingProviderRegistrations) {
@@ -605,6 +617,16 @@ export class ExtensionRunner {
 					unload: (name: string) => runner.skillsContextUnloadFn(name),
 					listActive: () => runner.skillsContextListActiveFn(),
 					history: () => runner.skillsContextHistoryFn(),
+				};
+			},
+			get dontDestroyNotes() {
+				runner.assertActive();
+				return {
+					set: (slot: number, text: string) => runner.dontDestroyNotesSetFn(slot, text),
+					clear: (slot: number) => runner.dontDestroyNotesClearFn(slot),
+					clearAll: () => runner.dontDestroyNotesClearAllFn(),
+					list: () => runner.dontDestroyNotesListFn(),
+					history: () => runner.dontDestroyNotesHistoryFn(),
 				};
 			},
 			get modelRegistry() {

@@ -17,6 +17,11 @@ export {
 	type EditToolInput,
 	type EditToolOptions,
 } from "./edit.js";
+export {
+	createDontDestroyNotesTool,
+	createDontDestroyNotesToolDefinition,
+	type DontDestroyNotesToolInput,
+} from "./dont-destroy-notes.js";
 export { withFileMutationQueue } from "./file-mutation-queue.js";
 export {
 	createFindTool,
@@ -76,6 +81,7 @@ export {
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { ToolDefinition } from "../extensions/types.js";
 import { type BashToolOptions, createBashTool, createBashToolDefinition } from "./bash.js";
+import { createDontDestroyNotesTool, createDontDestroyNotesToolDefinition } from "./dont-destroy-notes.js";
 import { createEditTool, createEditToolDefinition, type EditToolOptions } from "./edit.js";
 import { createFindTool, createFindToolDefinition, type FindToolOptions } from "./find.js";
 import { createGrepTool, createGrepToolDefinition, type GrepToolOptions } from "./grep.js";
@@ -86,7 +92,16 @@ import { createWriteTool, createWriteToolDefinition, type WriteToolOptions } fro
 
 export type Tool = AgentTool<any>;
 export type ToolDef = ToolDefinition<any, any>;
-export type ToolName = "read" | "bash" | "edit" | "write" | "grep" | "find" | "ls" | "skills_context";
+export type ToolName =
+	| "read"
+	| "bash"
+	| "edit"
+	| "write"
+	| "grep"
+	| "find"
+	| "ls"
+	| "skills_context"
+	| "dont_destroy_notes";
 export const allToolNames: Set<ToolName> = new Set([
 	"read",
 	"bash",
@@ -96,6 +111,7 @@ export const allToolNames: Set<ToolName> = new Set([
 	"find",
 	"ls",
 	"skills_context",
+	"dont_destroy_notes",
 ]);
 
 export interface ToolsOptions {
@@ -126,6 +142,8 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createLsToolDefinition(cwd, options?.ls);
 		case "skills_context":
 			return createSkillsContextToolDefinition();
+		case "dont_destroy_notes":
+			return createDontDestroyNotesToolDefinition();
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -149,6 +167,8 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createLsTool(cwd, options?.ls);
 		case "skills_context":
 			return createSkillsContextTool();
+		case "dont_destroy_notes":
+			return createDontDestroyNotesTool();
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -182,6 +202,7 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		find: createFindToolDefinition(cwd, options?.find),
 		ls: createLsToolDefinition(cwd, options?.ls),
 		skills_context: createSkillsContextToolDefinition(),
+		dont_destroy_notes: createDontDestroyNotesToolDefinition(),
 	};
 }
 
@@ -213,5 +234,6 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		find: createFindTool(cwd, options?.find),
 		ls: createLsTool(cwd, options?.ls),
 		skills_context: createSkillsContextTool(),
+		dont_destroy_notes: createDontDestroyNotesTool(),
 	};
 }

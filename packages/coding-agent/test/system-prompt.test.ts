@@ -13,6 +13,7 @@ describe("buildSystemPrompt", () => {
 
 			expect(prompt).toContain("|<SOUL>|");
 			expect(prompt).toContain("|<Tools>|");
+			expect(prompt).toContain("|<DONT-DESTROY>|");
 			expect(prompt).toContain("|<Tools>|\nAvailable tools:\n(none)");
 		});
 
@@ -26,6 +27,7 @@ describe("buildSystemPrompt", () => {
 
 			expect(prompt).toContain("|<SOUL>|");
 			expect(prompt).toContain("|<Tools>|");
+			expect(prompt).toContain("|<DONT-DESTROY>|");
 			expect(prompt).toContain("Show file paths clearly");
 		});
 	});
@@ -46,6 +48,7 @@ describe("buildSystemPrompt", () => {
 
 			expect(prompt).toContain("|<SOUL>|");
 			expect(prompt).toContain("|<Tools>|");
+			expect(prompt).toContain("|<DONT-DESTROY>|");
 			expect(prompt).toContain("- read:");
 			expect(prompt).toContain("- bash:");
 			expect(prompt).toContain("- edit:");
@@ -67,6 +70,7 @@ describe("buildSystemPrompt", () => {
 
 			expect(prompt).toContain("|<SOUL>|");
 			expect(prompt).toContain("|<Tools>|");
+			expect(prompt).toContain("|<DONT-DESTROY>|");
 			expect(prompt).toContain("- dynamic_tool: Run dynamic test behavior");
 		});
 
@@ -80,6 +84,7 @@ describe("buildSystemPrompt", () => {
 
 			expect(prompt).toContain("|<SOUL>|");
 			expect(prompt).toContain("|<Tools>|");
+			expect(prompt).toContain("|<DONT-DESTROY>|");
 			expect(prompt).not.toContain("dynamic_tool");
 		});
 	});
@@ -96,6 +101,7 @@ describe("buildSystemPrompt", () => {
 
 			expect(prompt).toContain("|<SOUL>|");
 			expect(prompt).toContain("|<Tools>|");
+			expect(prompt).toContain("|<DONT-DESTROY>|");
 			expect(prompt).toContain("- Use dynamic_tool for project summaries.");
 		});
 
@@ -110,6 +116,7 @@ describe("buildSystemPrompt", () => {
 
 			expect(prompt).toContain("|<SOUL>|");
 			expect(prompt).toContain("|<Tools>|");
+			expect(prompt).toContain("|<DONT-DESTROY>|");
 			expect(prompt.match(/- Use dynamic_tool for summaries\./g)).toHaveLength(1);
 		});
 	});

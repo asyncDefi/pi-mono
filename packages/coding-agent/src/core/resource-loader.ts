@@ -841,14 +841,23 @@ export class DefaultResourceLoader implements ResourceLoader {
 	}
 
 	private discoverSystemPromptFile(): string | undefined {
-		const projectPath = join(this.cwd, CONFIG_DIR_NAME, "SYSTEM.md");
-		if (existsSync(projectPath)) {
-			return projectPath;
+		// Prefer SOUL.md (new name), but keep SYSTEM.md for backwards compatibility.
+		const projectSoulPath = join(this.cwd, CONFIG_DIR_NAME, "SOUL.md");
+		if (existsSync(projectSoulPath)) {
+			return projectSoulPath;
+		}
+		const globalSoulPath = join(this.agentDir, "SOUL.md");
+		if (existsSync(globalSoulPath)) {
+			return globalSoulPath;
 		}
 
-		const globalPath = join(this.agentDir, "SYSTEM.md");
-		if (existsSync(globalPath)) {
-			return globalPath;
+		const projectSystemPath = join(this.cwd, CONFIG_DIR_NAME, "SYSTEM.md");
+		if (existsSync(projectSystemPath)) {
+			return projectSystemPath;
+		}
+		const globalSystemPath = join(this.agentDir, "SYSTEM.md");
+		if (existsSync(globalSystemPath)) {
+			return globalSystemPath;
 		}
 
 		return undefined;

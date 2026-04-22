@@ -11,7 +11,9 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
-			expect(prompt).toContain("Available tools:\n(none)");
+			expect(prompt).toContain("|<SOUL>|");
+			expect(prompt).toContain("|<Tools>|");
+			expect(prompt).toContain("|<Tools>|\nAvailable tools:\n(none)");
 		});
 
 		test("shows file paths guideline even with no tools", () => {
@@ -22,6 +24,8 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
+			expect(prompt).toContain("|<SOUL>|");
+			expect(prompt).toContain("|<Tools>|");
 			expect(prompt).toContain("Show file paths clearly");
 		});
 	});
@@ -40,6 +44,8 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
+			expect(prompt).toContain("|<SOUL>|");
+			expect(prompt).toContain("|<Tools>|");
 			expect(prompt).toContain("- read:");
 			expect(prompt).toContain("- bash:");
 			expect(prompt).toContain("- edit:");
@@ -59,6 +65,8 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
+			expect(prompt).toContain("|<SOUL>|");
+			expect(prompt).toContain("|<Tools>|");
 			expect(prompt).toContain("- dynamic_tool: Run dynamic test behavior");
 		});
 
@@ -70,6 +78,8 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
+			expect(prompt).toContain("|<SOUL>|");
+			expect(prompt).toContain("|<Tools>|");
 			expect(prompt).not.toContain("dynamic_tool");
 		});
 	});
@@ -84,6 +94,8 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
+			expect(prompt).toContain("|<SOUL>|");
+			expect(prompt).toContain("|<Tools>|");
 			expect(prompt).toContain("- Use dynamic_tool for project summaries.");
 		});
 
@@ -96,6 +108,8 @@ describe("buildSystemPrompt", () => {
 				cwd: process.cwd(),
 			});
 
+			expect(prompt).toContain("|<SOUL>|");
+			expect(prompt).toContain("|<Tools>|");
 			expect(prompt.match(/- Use dynamic_tool for summaries\./g)).toHaveLength(1);
 		});
 	});

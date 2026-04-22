@@ -50,46 +50,48 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	const contextFiles = providedContextFiles ?? [];
 	const skills = providedSkills ?? [];
 
-	if (customPrompt) {
-		let prompt = customPrompt;
-
-		if (appendSection) {
-			prompt += appendSection;
-		}
-
-		// Append project context files
-		if (contextFiles.length > 0) {
-			prompt += "\n\n# Project Context\n\n";
-			prompt += "Project-specific instructions and guidelines:\n\n";
-			for (const { path: filePath, content } of contextFiles) {
-				prompt += `## ${filePath}\n\n${content}\n\n`;
-			}
-		}
-
-		// Append skills section (only if read tool is available)
-		const customPromptHasRead = !selectedTools || selectedTools.includes("read");
-		if (customPromptHasRead && skills.length > 0) {
-			prompt += formatSkillsForPrompt(skills);
-		}
-
-		// Add date and working directory last
-		prompt += `\nCurrent date: ${date}`;
-		prompt += `\nCurrent working directory: ${promptCwd}`;
-
-		return prompt;
-	}
-
-	// Get absolute paths to documentation and examples
-	const readmePath = getReadmePath();
-	const docsPath = getDocsPath();
-	const examplesPath = getExamplesPath();
-
 	// Build tools list based on selected tools.
 	// A tool appears in Available tools only when the caller provides a one-line snippet.
 	const tools = selectedTools || ["read", "bash", "edit", "write"];
 	const visibleTools = tools.filter((name) => !!toolSnippets?.[name]);
 	const toolsList =
 		visibleTools.length > 0 ? visibleTools.map((name) => `- ${name}: ${toolSnippets![name]}`).join("\n") : "(none)";
+	const toolsSection = `Available tools:\n${toolsList}`;
+
+	const hasRead = tools.includes("read");
+
+	if (customPrompt) {
+		let soul = customPrompt;
+
+		if (appendSection) {
+			soul += appendSection;
+		}
+
+		// Append project context files
+		if (contextFiles.length > 0) {
+			soul += "\n\n# Project Context\n\n";
+			soul += "Project-specific instructions and guidelines:\n\n";
+			for (const { path: filePath, content } of contextFiles) {
+				soul += `## ${filePath}\n\n${content}\n\n`;
+			}
+		}
+
+		// Append skills section (only if read tool is available)
+		if (hasRead && skills.length > 0) {
+			soul += formatSkillsForPrompt(skills);
+		}
+
+		// Add date and working directory last
+		soul += `\nCurrent date: ${date}`;
+		soul += `\nCurrent working directory: ${promptCwd}`;
+
+		return `|<SOUL>|\n${soul}\n\n|<Tools>|\n${toolsSection}`;
+	}
+
+	// Get absolute paths to documentation and examples
+	const readmePath = getReadmePath();
+	const docsPath = getDocsPath();
+	const examplesPath = getExamplesPath();
 
 	// Build guidelines based on which tools are actually available
 	const guidelinesList: string[] = [];
@@ -106,7 +108,6 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	const hasGrep = tools.includes("grep");
 	const hasFind = tools.includes("find");
 	const hasLs = tools.includes("ls");
-	const hasRead = tools.includes("read");
 
 	// File exploration guidelines
 	if (hasBash && !hasGrep && !hasFind && !hasLs) {
@@ -128,12 +129,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 
 	const guidelines = guidelinesList.map((g) => `- ${g}`).join("\n");
 
-	let prompt = `You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
-
-Available tools:
-${toolsList}
-
-In addition to the tools above, you may have access to other custom tools depending on the project.
+	let soul = `You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
 
 Guidelines:
 ${guidelines}
@@ -147,26 +143,26 @@ Pi documentation (read only when the user asks about pi itself, its SDK, extensi
 - Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)`;
 
 	if (appendSection) {
-		prompt += appendSection;
+		soul += appendSection;
 	}
 
 	// Append project context files
 	if (contextFiles.length > 0) {
-		prompt += "\n\n# Project Context\n\n";
-		prompt += "Project-specific instructions and guidelines:\n\n";
+		soul += "\n\n# Project Context\n\n";
+		soul += "Project-specific instructions and guidelines:\n\n";
 		for (const { path: filePath, content } of contextFiles) {
-			prompt += `## ${filePath}\n\n${content}\n\n`;
+			soul += `## ${filePath}\n\n${content}\n\n`;
 		}
 	}
 
 	// Append skills section (only if read tool is available)
 	if (hasRead && skills.length > 0) {
-		prompt += formatSkillsForPrompt(skills);
+		soul += formatSkillsForPrompt(skills);
 	}
 
 	// Add date and working directory last
-	prompt += `\nCurrent date: ${date}`;
-	prompt += `\nCurrent working directory: ${promptCwd}`;
+	soul += `\nCurrent date: ${date}`;
+	soul += `\nCurrent working directory: ${promptCwd}`;
 
-	return prompt;
+	return `|<SOUL>|\n${soul}\n\n|<Tools>|\n${toolsSection}`;
 }

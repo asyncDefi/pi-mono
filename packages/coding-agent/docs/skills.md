@@ -97,7 +97,9 @@ Notes are capped at 7 slots and a total budget of 2000 characters with decreasin
 
 ## Skill Commands
 
-Skills register as `/skill:name` commands:
+Pi can also scaffold a project-local skill from pasted or file-backed MCP capabilities with `/mcp-to-skill [file-or-capabilities]`.
+
+Skills then register as `/skill:name` commands:
 
 ```bash
 /skill:brave-search           # Load and execute the skill

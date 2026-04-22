@@ -19,6 +19,7 @@ export const BUILTIN_SLASH_COMMANDS: ReadonlyArray<BuiltinSlashCommand> = [
 	{ name: "model", description: "Select model (opens selector UI)" },
 	{ name: "scoped-models", description: "Enable/disable models for Ctrl+P cycling" },
 	{ name: "context-snapshot", description: "Save a snapshot of the full model context to .pi/context-snapshots/" },
+	{ name: "mcp-to-skill", description: "Convert provided MCP capabilities into a project-local skill" },
 	{ name: "export", description: "Export session (HTML default, or specify path: .html/.jsonl)" },
 	{ name: "import", description: "Import and resume a session from a JSONL file" },
 	{ name: "share", description: "Share session as a secret GitHub gist" },

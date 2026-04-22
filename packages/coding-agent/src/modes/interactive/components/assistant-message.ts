@@ -10,12 +10,14 @@ const SPINNER_FRAMES = ["·", "•", "●", "•"];
 class ThinkingBox extends Container {
 	private borderColor: (text: string) => string;
 	private isStreaming: boolean;
+	private duration?: number;
 
-	constructor(content: Component, borderColor: (text: string) => string, isStreaming = false) {
+	constructor(content: Component, borderColor: (text: string) => string, isStreaming = false, duration?: number) {
 		super();
 		this.addChild(content);
 		this.borderColor = borderColor;
 		this.isStreaming = isStreaming;
+		this.duration = duration;
 	}
 
 	override render(width: number): string[] {
@@ -24,7 +26,7 @@ class ThinkingBox extends Container {
 
 		// If empty but streaming, show a placeholder
 		if (contentLines.length === 0 && this.isStreaming) {
-			contentLines.push(theme.italic(theme.fg("thinkingText", "...")));
+			contentLines.push(theme.fg("thinkingText", "..."));
 		}
 
 		if (contentLines.length === 0) return [];
@@ -42,8 +44,9 @@ class ThinkingBox extends Container {
 			: (s: string) => theme.fg("dim", s);
 		const branchColor = this.isStreaming ? this.borderColor : (s: string) => theme.fg("dim", s);
 
-		// Header with bullet/spinner
-		result.push(`${bulletColor(bullet)} ${theme.italic(labelColor("Thinking"))}`);
+		// Header with bullet/spinner and duration in UPPERCASE (system voice)
+		const durationText = this.duration !== undefined ? ` (${this.duration.toFixed(1)}S)` : "";
+		result.push(`${bulletColor(bullet)} ${labelColor(`THINKING${durationText}`)}`);
 
 		// Tree-like structure for content
 		for (let i = 0; i < contentLines.length; i++) {
@@ -69,6 +72,8 @@ export class AssistantMessageComponent extends Container {
 	private hasToolCalls = false;
 	private tui?: TUI;
 	private animationTimer?: NodeJS.Timeout;
+	private thinkingStartTimes = new Map<number, number>();
+	private thinkingDurations = new Map<number, number>();
 
 	constructor(
 		message?: AssistantMessage,
@@ -183,7 +188,7 @@ export class AssistantMessageComponent extends Container {
 				if (this.hideThinkingBlock) {
 					// Show static thinking label when hidden
 					this.contentContainer.addChild(
-						new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), 1, 0),
+						new Text(theme.fg("thinkingText", this.hiddenThinkingLabel.toUpperCase()), 1, 0),
 					);
 					if (hasVisibleContentAfter) {
 						this.contentContainer.addChild(new Spacer(1));
@@ -192,13 +197,24 @@ export class AssistantMessageComponent extends Container {
 					// Thinking traces in a tree-like box.
 					// Dim the content if it's no longer streaming.
 					const isCurrentThinking = isStreaming && i === message.content.length - 1;
+
+					// Track duration
+					if (isCurrentThinking) {
+						if (!this.thinkingStartTimes.has(i)) {
+							this.thinkingStartTimes.set(i, Date.now());
+						}
+					} else if (this.thinkingStartTimes.has(i) && !this.thinkingDurations.has(i)) {
+						this.thinkingDurations.set(i, (Date.now() - this.thinkingStartTimes.get(i)!) / 1000);
+					}
+
+					const duration = this.thinkingDurations.get(i);
 					const box = new ThinkingBox(
 						new Markdown(content.thinking.trim(), 0, 0, this.markdownTheme, {
 							color: (text: string) => theme.fg(isCurrentThinking ? "thinkingText" : "dim", text),
-							italic: true,
 						}),
-						theme.getThinkingBorderColor("medium"),
+						theme.getThinkingBorderColor("low"),
 						isCurrentThinking,
+						duration,
 					);
 					this.contentContainer.addChild(box);
 					if (hasVisibleContentAfter) {

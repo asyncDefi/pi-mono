@@ -1,0 +1,79 @@
+{
+	"$schema": "https://raw.githubusercontent.com/badlogic/pi-mono/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json",
+	"name": "sterile",
+	"vars": {
+		"voidBlack": "#000000",
+		"dataDensity": "#1A1A1A",
+		"silverTrace": "#E5E5E5",
+		"coldBlue": "#0066FF",
+		"ghostWhite": "#FAFAFA",
+		"dataGray": "#B0B0B0",
+		"errorRed": "#D32F2F",
+		"warningOrange": "#F57C00",
+		"successGreen": "#388E3C"
+	},
+	"colors": {
+		"accent": "coldBlue",
+		"border": "silverTrace",
+		"borderAccent": "coldBlue",
+		"borderMuted": "silverTrace",
+		"success": "successGreen",
+		"error": "errorRed",
+		"warning": "warningOrange",
+		"muted": "dataGray",
+		"dim": "silverTrace",
+		"text": "dataDensity",
+		"thinkingText": "dataGray",
+
+		"selectedBg": "ghostWhite",
+		"userMessageBg": "ghostWhite",
+		"userMessageText": "dataDensity",
+		"customMessageBg": "ghostWhite",
+		"customMessageText": "dataDensity",
+		"customMessageLabel": "dataGray",
+		"toolPendingBg": "ghostWhite",
+		"toolSuccessBg": "ghostWhite",
+		"toolErrorBg": "ghostWhite",
+		"toolTitle": "voidBlack",
+		"toolOutput": "dataGray",
+
+		"mdHeading": "voidBlack",
+		"mdLink": "coldBlue",
+		"mdLinkUrl": "dataGray",
+		"mdCode": "voidBlack",
+		"mdCodeBlock": "dataDensity",
+		"mdCodeBlockBorder": "silverTrace",
+		"mdQuote": "dataGray",
+		"mdQuoteBorder": "silverTrace",
+		"mdHr": "silverTrace",
+		"mdListBullet": "coldBlue",
+
+		"toolDiffAdded": "successGreen",
+		"toolDiffRemoved": "errorRed",
+		"toolDiffContext": "dataGray",
+
+		"syntaxComment": "dataGray",
+		"syntaxKeyword": "coldBlue",
+		"syntaxFunction": "voidBlack",
+		"syntaxVariable": "dataDensity",
+		"syntaxString": "successGreen",
+		"syntaxNumber": "coldBlue",
+		"syntaxType": "dataGray",
+		"syntaxOperator": "dataDensity",
+		"syntaxPunctuation": "dataGray",
+
+		"thinkingOff": "silverTrace",
+		"thinkingMinimal": "dataGray",
+		"thinkingLow": "dataGray",
+		"thinkingMedium": "coldBlue",
+		"thinkingHigh": "coldBlue",
+		"thinkingXhigh": "coldBlue",
+
+		"bashMode": "coldBlue"
+	},
+	"export": {
+		"pageBg": "#FFFFFF",
+		"cardBg": "#FAFAFA",
+		"infoBg": "#FFFFFF"
+	}
+}

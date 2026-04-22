@@ -163,6 +163,7 @@ Type `/` in the editor to trigger commands. [Extensions](#extensions) can regist
 |---------|-------------|
 | `/login`, `/logout` | OAuth authentication |
 | `/model` | Switch models |
+| `/mcp-to-skill [file-or-capabilities]` | Turn provided MCP capabilities into a project-local skill under `.pi/skills/` |
 | `/scoped-models` | Enable/disable models for Ctrl+P cycling |
 | `/settings` | Thinking level, theme, message delivery, transport |
 | `/resume` | Pick from previous sessions |
@@ -308,7 +309,7 @@ Place in `~/.pi/agent/prompts/`, `.pi/prompts/`, or a [pi package](#pi-packages)
 
 ### Skills
 
-On-demand capability packages following the [Agent Skills standard](https://agentskills.io). Invoke via `/skill:name` or let the agent load them automatically.
+On-demand capability packages following the [Agent Skills standard](https://agentskills.io). Invoke via `/skill:name` or let the agent load them automatically. Use `/mcp-to-skill` to turn pasted or file-backed MCP capabilities into a project-local skill under `.pi/skills/`.
 
 ```markdown
 <!-- ~/.pi/agent/skills/my-skill/SKILL.md -->

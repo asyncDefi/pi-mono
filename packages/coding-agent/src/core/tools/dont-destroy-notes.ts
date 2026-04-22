@@ -67,24 +67,25 @@ export function createDontDestroyNotesToolDefinition(): ToolDefinition<typeof do
 								: `Note slot ${args.slot} set.`,
 						},
 					],
+					details: undefined,
 				};
 			}
 
 			if (action === "clear") {
 				if (!args.slot) throw new Error('"slot" is required for action "clear"');
 				ctx.dontDestroyNotes.clear(args.slot);
-				return { content: [{ type: "text", text: `Note slot ${args.slot} cleared.` }] };
+				return { content: [{ type: "text", text: `Note slot ${args.slot} cleared.` }], details: undefined };
 			}
 
 			if (action === "clear_all") {
 				ctx.dontDestroyNotes.clearAll();
-				return { content: [{ type: "text", text: "All note slots cleared." }] };
+				return { content: [{ type: "text", text: "All note slots cleared." }], details: undefined };
 			}
 
 			if (action === "list") {
 				const notes = ctx.dontDestroyNotes.list();
 				const lines = notes.map((n) => `[${n.slot}] (max ${n.limit}) ${n.text ?? "(empty)"}`);
-				return { content: [{ type: "text", text: lines.join("\n") }] };
+				return { content: [{ type: "text", text: lines.join("\n") }], details: undefined };
 			}
 
 			const history = ctx.dontDestroyNotes.history();
@@ -96,10 +97,12 @@ export function createDontDestroyNotesToolDefinition(): ToolDefinition<typeof do
 							const slot = e.slot ? ` slot ${e.slot}` : "";
 							return `${t} - note${slot} ${e.action}`;
 						});
-			return { content: [{ type: "text", text: lines.join("\n") }] };
+			return { content: [{ type: "text", text: lines.join("\n") }], details: undefined };
 		},
-		renderResult(result, options, theme, showImages) {
-			return new Text(formatResultText(result as any, options, theme, showImages));
+		renderResult(result, options, theme, context) {
+			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
+			text.setText(formatResultText(result as any, options, theme, context.showImages));
+			return text;
 		},
 	};
 }

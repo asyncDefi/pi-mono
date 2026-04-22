@@ -70,6 +70,7 @@ export function createSkillsContextToolDefinition(): ToolDefinition<typeof skill
 								: `Skill "${name}" loaded into context.`,
 						},
 					],
+					details: undefined,
 				};
 			}
 
@@ -84,6 +85,7 @@ export function createSkillsContextToolDefinition(): ToolDefinition<typeof skill
 								: `Skill "${name}" unloaded from context.`,
 						},
 					],
+					details: undefined,
 				};
 			}
 
@@ -96,6 +98,7 @@ export function createSkillsContextToolDefinition(): ToolDefinition<typeof skill
 							text: active.length === 0 ? "(no active skills)" : active.join("\n"),
 						},
 					],
+					details: undefined,
 				};
 			}
 
@@ -104,10 +107,12 @@ export function createSkillsContextToolDefinition(): ToolDefinition<typeof skill
 				history.length === 0
 					? ["(no history)"]
 					: history.map((e) => `${e.timestamp.slice(11, 16)} - skill ${e.name} ${e.action}`);
-			return { content: [{ type: "text", text: lines.join("\n") }] };
+			return { content: [{ type: "text", text: lines.join("\n") }], details: undefined };
 		},
-		renderResult(result, options, theme, showImages) {
-			return new Text(formatResultText(result as any, options, theme, showImages));
+		renderResult(result, options, theme, context) {
+			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
+			text.setText(formatResultText(result as any, options, theme, context.showImages));
+			return text;
 		},
 	};
 }

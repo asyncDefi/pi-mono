@@ -37,9 +37,7 @@ describe("extractOutboundToolSummaries", () => {
 				},
 			],
 		});
-		expect(tools).toEqual([
-			{ name: "alpha", description: "A", parameters: { type: "object" } },
-		]);
+		expect(tools).toEqual([{ name: "alpha", description: "A", parameters: { type: "object" } }]);
 	});
 
 	it("returns empty for missing or invalid payload", () => {

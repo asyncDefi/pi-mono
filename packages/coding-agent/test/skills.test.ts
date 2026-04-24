@@ -7,8 +7,8 @@ import {
 	formatSkillsForPrompt,
 	loadSkills,
 	loadSkillsFromDir,
-	skillPromptSegmentId,
 	type Skill,
+	skillPromptSegmentId,
 } from "../src/core/skills.js";
 import { createSyntheticSourceInfo } from "../src/core/source-info.js";
 

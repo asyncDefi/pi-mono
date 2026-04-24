@@ -72,16 +72,13 @@ import { emitSessionShutdownEvent } from "./extensions/runner.js";
 import type { BashExecutionMessage, CustomMessage } from "./messages.js";
 import type { ModelRegistry } from "./model-registry.js";
 import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.js";
+import { extractOutboundToolSummaries, type OutboundToolSummary } from "./provider-payload-tools.js";
 import type { ResourceExtensionPaths, ResourceLoader } from "./resource-loader.js";
 import type { BranchSummaryEntry, CompactionEntry, SessionManager } from "./session-manager.js";
 import { CURRENT_SESSION_VERSION, getLatestCompactionEntry, type SessionHeader } from "./session-manager.js";
 import type { SettingsManager } from "./settings-manager.js";
 import type { SlashCommandInfo } from "./slash-commands.js";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.js";
-import {
-	extractOutboundToolSummaries,
-	type OutboundToolSummary,
-} from "./provider-payload-tools.js";
 import { type BuildSystemPromptOptions, buildSystemPrompt } from "./system-prompt.js";
 import { type BashOperations, createLocalBashOperations } from "./tools/bash.js";
 import { createAllToolDefinitions } from "./tools/index.js";
@@ -817,6 +814,12 @@ export class AgentSession {
 			this._resolveRetry();
 			await this._checkCompaction(msg);
 		}
+
+		// Keep a single source of truth: extension hooks may rewrite agent.state.systemPrompt during a turn;
+		// after each run ends, align it with the rebuilt canonical prompt (skills, notes, tools).
+		if (event.type === "agent_end") {
+			this.agent.state.systemPrompt = this._baseSystemPrompt;
+		}
 	}
 
 	/** Resolve the pending retry promise */
@@ -994,18 +997,27 @@ export class AgentSession {
 		return this.agent.state.isStreaming;
 	}
 
-	/** Current effective system prompt (includes any per-turn extension modifications) */
+	/**
+	 * Canonical system prompt: tools, skills_context-loaded skills, dont_destroy notes, and project context.
+	 * Same as {@link baseSystemPrompt}; always up to date when skills load/unload or notes change.
+	 */
 	get systemPrompt(): string {
-		return this.agent.state.systemPrompt;
+		return this._baseSystemPrompt;
 	}
 
 	/**
-	 * System prompt rebuilt from session state (tools, skills loaded via skills_context, notes).
-	 * Use for diagnostics and context snapshots: {@link systemPrompt} can still hold a per-turn
-	 * extension override from the last request until the next user prompt resets it.
+	 * Same string as {@link systemPrompt} (rebuilt from session state).
 	 */
 	get baseSystemPrompt(): string {
 		return this._baseSystemPrompt;
+	}
+
+	/**
+	 * Low-level copy on the agent object (may differ mid-turn if an extension replaced it for provider hooks).
+	 * Resynchronized to the canonical prompt on every {@link AgentEvent} `agent_end`.
+	 */
+	get rawAgentSystemPrompt(): string {
+		return this.agent.state.systemPrompt;
 	}
 
 	/** Skill names currently merged into {@link baseSystemPrompt} via skills_context. */

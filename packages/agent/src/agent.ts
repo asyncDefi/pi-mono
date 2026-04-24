@@ -108,6 +108,11 @@ export interface AgentOptions {
 	transport?: Transport;
 	maxRetryDelayMs?: number;
 	toolExecution?: ToolExecutionMode;
+	/**
+	 * When set, used as the system prompt for every LLM request instead of the frozen
+	 * `AgentContext.systemPrompt` snapshot (e.g. keep session-rebuilt prompts in sync with tools/skills).
+	 */
+	getCanonicalSystemPrompt?: () => string;
 }
 
 class PendingMessageQueue {
@@ -186,6 +191,8 @@ export class Agent {
 	public maxRetryDelayMs?: number;
 	/** Tool execution strategy for assistant messages that contain multiple tool calls. */
 	public toolExecution: ToolExecutionMode;
+	/** Optional source for the system prompt on each LLM call (overrides context snapshot). */
+	public getCanonicalSystemPrompt?: () => string;
 
 	constructor(options: AgentOptions = {}) {
 		this._state = createMutableAgentState(options.initialState);
@@ -204,6 +211,7 @@ export class Agent {
 		this.transport = options.transport ?? "sse";
 		this.maxRetryDelayMs = options.maxRetryDelayMs;
 		this.toolExecution = options.toolExecution ?? "parallel";
+		this.getCanonicalSystemPrompt = options.getCanonicalSystemPrompt;
 	}
 
 	/**
@@ -413,7 +421,7 @@ export class Agent {
 			model: this._state.model,
 			reasoning: this._state.thinkingLevel === "off" ? undefined : this._state.thinkingLevel,
 			sessionId: this.sessionId,
-			getLiveSystemPrompt: () => this._state.systemPrompt,
+			getLiveSystemPrompt: this.getCanonicalSystemPrompt ?? (() => this._state.systemPrompt),
 			onPayload: this.onPayload,
 			onResponse: this.onResponse,
 			transport: this.transport,
@@ -462,17 +470,36 @@ export class Agent {
 	}
 
 	private async handleRunFailure(error: unknown, aborted: boolean): Promise<void> {
-		const failureMessage = {
-			role: "assistant",
-			content: [{ type: "text", text: "" }],
-			api: this._state.model.api,
-			provider: this._state.model.provider,
-			model: this._state.model.id,
-			usage: EMPTY_USAGE,
-			stopReason: aborted ? "aborted" : "error",
-			errorMessage: error instanceof Error ? error.message : String(error),
-			timestamp: Date.now(),
-		} satisfies AgentMessage;
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		const stopReason = aborted ? "aborted" : "error";
+		const timestamp = Date.now();
+
+		const lastStreaming = this._state.streamingMessage;
+		const failureMessage = (
+			lastStreaming && lastStreaming.role === "assistant"
+				? {
+						...lastStreaming,
+						api: lastStreaming.api ?? this._state.model.api,
+						provider: lastStreaming.provider ?? this._state.model.provider,
+						model: lastStreaming.model ?? this._state.model.id,
+						usage: lastStreaming.usage ?? EMPTY_USAGE,
+						stopReason,
+						errorMessage,
+						timestamp,
+					}
+				: {
+						role: "assistant",
+						content: [{ type: "text", text: "" }],
+						api: this._state.model.api,
+						provider: this._state.model.provider,
+						model: this._state.model.id,
+						usage: EMPTY_USAGE,
+						stopReason,
+						errorMessage,
+						timestamp,
+					}
+		) satisfies AgentMessage;
+
 		this._state.messages.push(failureMessage);
 		this._state.errorMessage = failureMessage.errorMessage;
 		await this.processEvents({ type: "agent_end", messages: [failureMessage] });

@@ -141,8 +141,8 @@ describe("agentLoop with AgentMessage", () => {
 			convertToLlm: identityConverter,
 			getLiveSystemPrompt: () => "live-prompt",
 		};
-		const streamFn = (_model: Model<"openai-responses">, llmContext: Context) => {
-			received.push(llmContext.systemPrompt);
+		const streamFn = (_model: Model<any>, llmContext: Context) => {
+			received.push(llmContext.systemPrompt ?? "");
 			const stream = new MockAssistantStream();
 			queueMicrotask(() => {
 				stream.push({

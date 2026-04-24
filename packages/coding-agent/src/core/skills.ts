@@ -381,11 +381,7 @@ export function skillPromptSegmentId(skillName: string): string {
 }
 
 function escapeXmlAttribute(value: string): string {
-	return value
-		.replace(/&/g, "&amp;")
-		.replace(/"/g, "&quot;")
-		.replace(/</g, "&lt;")
-		.replace(/\r/g, "&#13;");
+	return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/\r/g, "&#13;");
 }
 
 function wrapCdata(text: string): string {
@@ -513,7 +509,7 @@ export function formatSkillsForPrompt(skills: Skill[], options?: FormatSkillsFor
 		"",
 		"",
 		"<LOADED_SKILLS>",
-		"Load or unload using skills_context with the exact value of each block's name attribute (e.g. name=\"my-skill\"). The opening tag (SKILL_*) is a stable segment id for quick reference; tools use the name attribute.",
+		'Load or unload using skills_context with the exact value of each block\'s name attribute (e.g. name="my-skill"). The opening tag (SKILL_*) is a stable segment id for quick reference; tools use the name attribute.',
 		"When a skill references a relative path, resolve it against that skill's directory (the folder containing its SKILL.md).",
 		"",
 	];

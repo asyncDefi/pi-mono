@@ -1,10 +1,13 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { getModel } from "@mariozechner/pi-ai";
+import { fauxAssistantMessage, getModel, registerFauxProvider } from "@mariozechner/pi-ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { AuthStorage } from "../src/core/auth-storage.js";
+import { DefaultResourceLoader } from "../src/core/resource-loader.js";
 import { createAgentSession } from "../src/core/sdk.js";
 import { SessionManager } from "../src/core/session-manager.js";
+import { SettingsManager } from "../src/core/settings-manager.js";
 
 describe("createAgentSession session manager defaults", () => {
 	let tempDir: string;
@@ -98,5 +101,58 @@ describe("createAgentSession session manager defaults", () => {
 		expect(pwdOut.replace(/\\/g, "/")).toMatch(/session-project\/?$/);
 
 		session.dispose();
+	});
+
+	it("sends before_agent_start system prompt changes through the SDK session path", async () => {
+		const faux = registerFauxProvider();
+		const settingsManager = SettingsManager.create(cwd, agentDir);
+		const authStorage = AuthStorage.inMemory();
+		authStorage.setRuntimeApiKey(faux.getModel().provider, "faux-key");
+		const resourceLoader = new DefaultResourceLoader({
+			cwd,
+			agentDir,
+			settingsManager,
+			extensionFactories: [
+				(pi) => {
+					pi.on("before_agent_start", async (event) => ({
+						systemPrompt: `${event.systemPrompt}\n\nsdk extra instructions`,
+					}));
+				},
+			],
+			noSkills: true,
+			noPromptTemplates: true,
+			noThemes: true,
+		});
+		await resourceLoader.reload();
+
+		let providerSystemPrompt = "";
+		faux.setResponses([
+			(context) => {
+				providerSystemPrompt = context.systemPrompt ?? "";
+				return fauxAssistantMessage("ok");
+			},
+		]);
+
+		const { session } = await createAgentSession({
+			cwd,
+			agentDir,
+			model: faux.getModel(),
+			authStorage,
+			settingsManager,
+			sessionManager: SessionManager.inMemory(cwd),
+			resourceLoader,
+		});
+
+		try {
+			await session.bindExtensions({});
+			await session.prompt("hello");
+
+			expect(providerSystemPrompt).toContain("sdk extra instructions");
+			expect(session.systemPrompt).not.toContain("sdk extra instructions");
+			expect(session.rawAgentSystemPrompt).toBe(session.baseSystemPrompt);
+		} finally {
+			session.dispose();
+			faux.unregister();
+		}
 	});
 });

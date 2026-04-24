@@ -288,6 +288,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 	const extensionRunnerRef: { current?: ExtensionRunner } = {};
 	const outboundToolsSessionRef: { current?: AgentSession } = {};
+	const canonicalPromptSessionRef: { current?: AgentSession } = {};
 
 	agent = new Agent({
 		initialState: {
@@ -343,6 +344,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		transport: settingsManager.getTransport(),
 		thinkingBudgets: settingsManager.getThinkingBudgets(),
 		maxRetryDelayMs: settingsManager.getRetrySettings().maxDelayMs,
+		getCanonicalSystemPrompt: () => canonicalPromptSessionRef.current?.rawAgentSystemPrompt ?? "",
 	});
 
 	// Restore messages if session has existing data
@@ -374,6 +376,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		sessionStartEvent: options.sessionStartEvent,
 	});
 	outboundToolsSessionRef.current = session;
+	canonicalPromptSessionRef.current = session;
 	const extensionsResult = resourceLoader.getExtensions();
 
 	return {

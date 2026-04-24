@@ -2559,7 +2559,7 @@ export class InteractiveMode {
 			thinkingLevel: this.session.thinkingLevel,
 			activeTools: this.session.getActiveToolNames(),
 			loadedSkillNames: this.session.loadedSkillNames,
-			liveSystemPromptDiffersFromBase: this.session.systemPrompt !== this.session.baseSystemPrompt,
+			rawAgentSystemPromptDiffersFromCanonical: this.session.rawAgentSystemPrompt !== this.session.baseSystemPrompt,
 			packages: this.session.settingsManager.getPackages(),
 			extensionPaths: this.session.extensionRunner.getExtensionPaths(),
 			hasBeforeProviderRequestHandlers: this.session.hasExtensionHandlers("before_provider_request"),
@@ -2567,11 +2567,7 @@ export class InteractiveMode {
 
 		fs.writeFileSync(path.join(snapshotsDir, "meta.json"), JSON.stringify(meta, null, 2), "utf-8");
 		fs.writeFileSync(path.join(snapshotsDir, "system-prompt.txt"), this.session.baseSystemPrompt, "utf-8");
-		fs.writeFileSync(
-			path.join(snapshotsDir, "live-system-prompt.txt"),
-			this.session.systemPrompt,
-			"utf-8",
-		);
+		fs.writeFileSync(path.join(snapshotsDir, "live-system-prompt.txt"), this.session.rawAgentSystemPrompt, "utf-8");
 		fs.writeFileSync(
 			path.join(snapshotsDir, "loaded-skills.json"),
 			JSON.stringify(this.session.getLoadedSkillsSnapshotDetails(), null, 2),

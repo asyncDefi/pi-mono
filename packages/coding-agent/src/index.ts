@@ -219,15 +219,15 @@ export {
 } from "./core/settings-manager.js";
 // Skills
 export {
-	formatSkillsForPrompt,
 	type FormatSkillsForPromptOptions,
-	skillPromptSegmentId,
+	formatSkillsForPrompt,
 	type LoadSkillsFromDirOptions,
 	type LoadSkillsResult,
 	loadSkills,
 	loadSkillsFromDir,
 	type Skill,
 	type SkillFrontmatter,
+	skillPromptSegmentId,
 } from "./core/skills.js";
 export { createSyntheticSourceInfo } from "./core/source-info.js";
 // Tools

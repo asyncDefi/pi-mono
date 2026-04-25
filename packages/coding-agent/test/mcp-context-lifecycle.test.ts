@@ -74,7 +74,7 @@ describe("MCP context lifecycle", () => {
 			name: "docs",
 			description: "Docs search",
 			configPath: `${cwd}/.pi/mcp.json`,
-			config: { type: "stdio", command: "node", args: [] },
+			config: { type: "stdio", command: "python", args: ["server.py"], cwd, env: { SECRET_TOKEN: "hidden" } },
 			sourceInfo: createSourceInfo(`${cwd}/.pi/mcp.json`, {
 				source: "project",
 				scope: "temporary",
@@ -96,6 +96,11 @@ describe("MCP context lifecycle", () => {
 		expect(session.getActiveToolNames()).toContain("mcp__docs__ping");
 		expect(session.systemPrompt).toContain("<LOADED_MCP>");
 		expect(session.systemPrompt).toContain("mcp__docs__ping");
+		expect((session as any)._listDiscoveredMcpLines()[0]).toContain("env keys: SECRET_TOKEN");
+		expect((session as any)._listDiscoveredMcpLines()[0]).toContain(
+			"implicit env keys: PYTHONUTF8, PYTHONIOENCODING",
+		);
+		expect((session as any)._listDiscoveredMcpLines()[0]).not.toContain("hidden");
 
 		const tool = session.getToolDefinition("mcp__docs__ping");
 		expect(tool).toBeDefined();

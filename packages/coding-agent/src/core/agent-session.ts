@@ -72,6 +72,7 @@ import { emitSessionShutdownEvent } from "./extensions/runner.js";
 import {
 	createMcpClient,
 	createMcpToolDefinition,
+	getImplicitStdioMcpEnvKeys,
 	type LoadedMcpServer,
 	type LoadedMcpTool,
 	type McpClientFactory,
@@ -232,6 +233,41 @@ export interface SessionStats {
 interface ToolDefinitionEntry {
 	definition: ToolDefinition;
 	sourceInfo: SourceInfo;
+}
+
+function formatMcpKeyList(values: Record<string, string> | undefined): string | undefined {
+	const keys = Object.keys(values ?? {}).sort((a, b) => a.localeCompare(b));
+	return keys.length > 0 ? keys.join(", ") : undefined;
+}
+
+function formatMcpServerLine(server: McpServer): string {
+	const parts = [server.description];
+	if (server.config.type === "stdio") {
+		const command = [server.config.command, ...server.config.args].join(" ").trim();
+		if (server.description !== `MCP stdio server: ${command}`) {
+			parts.push(`stdio: ${command}`);
+		}
+		if (server.config.cwd) {
+			parts.push(`cwd: ${server.config.cwd}`);
+		}
+		const envKeys = formatMcpKeyList(server.config.env);
+		if (envKeys) {
+			parts.push(`env keys: ${envKeys}`);
+		}
+		const implicitEnvKeys = getImplicitStdioMcpEnvKeys(server.config);
+		if (implicitEnvKeys.length > 0) {
+			parts.push(`implicit env keys: ${implicitEnvKeys.join(", ")}`);
+		}
+	} else {
+		if (server.description !== `MCP server at ${server.config.url}`) {
+			parts.push(`http: ${server.config.url}`);
+		}
+		const headerKeys = formatMcpKeyList(server.config.headers);
+		if (headerKeys) {
+			parts.push(`header keys: ${headerKeys}`);
+		}
+	}
+	return `${server.name}: ${parts.join("; ")}`;
 }
 
 // ============================================================================
@@ -763,9 +799,7 @@ export class AgentSession {
 		if (servers.length === 0) {
 			return ["(no MCP servers configured)"];
 		}
-		return [...servers]
-			.sort((a, b) => a.name.localeCompare(b.name))
-			.map((server) => `${server.name}: ${server.description}`);
+		return [...servers].sort((a, b) => a.name.localeCompare(b.name)).map((server) => formatMcpServerLine(server));
 	}
 
 	private _getMcpContextHistory(): Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> {

@@ -13,6 +13,10 @@ import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.js";
 const MCP_PROTOCOL_VERSION = "2024-11-05";
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_TOOL_NAME_LENGTH = 64;
+const PYTHON_STDIO_ENV_DEFAULTS = {
+	PYTHONUTF8: "1",
+	PYTHONIOENCODING: "utf-8",
+} as const;
 
 type JsonObject = Record<string, unknown>;
 type JsonRpcId = number | string;
@@ -116,6 +120,38 @@ function asStringMap(value: unknown): Record<string, string> | undefined {
 		}
 	}
 	return out;
+}
+
+function isLikelyPythonCommand(command: string): boolean {
+	const base = (command.split(/[\\/]/).pop() ?? command).toLowerCase().replace(/\.(exe|cmd|bat)$/i, "");
+	return base === "python" || base === "python3" || base.startsWith("python3.") || base === "py";
+}
+
+function hasEnvKey(env: NodeJS.ProcessEnv, key: string): boolean {
+	const normalized = key.toLowerCase();
+	return Object.keys(env).some((envKey) => envKey.toLowerCase() === normalized);
+}
+
+export function getImplicitStdioMcpEnvKeys(
+	config: McpStdioConfig,
+	parentEnv: NodeJS.ProcessEnv = process.env,
+): string[] {
+	if (!isLikelyPythonCommand(config.command)) {
+		return [];
+	}
+	const env: NodeJS.ProcessEnv = { ...parentEnv, ...(config.env ?? {}) };
+	return Object.keys(PYTHON_STDIO_ENV_DEFAULTS).filter((key) => !hasEnvKey(env, key));
+}
+
+export function createStdioMcpProcessEnv(
+	config: McpStdioConfig,
+	parentEnv: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+	const env: NodeJS.ProcessEnv = { ...parentEnv, ...(config.env ?? {}) };
+	for (const key of getImplicitStdioMcpEnvKeys(config, parentEnv)) {
+		env[key] = PYTHON_STDIO_ENV_DEFAULTS[key as keyof typeof PYTHON_STDIO_ENV_DEFAULTS];
+	}
+	return env;
 }
 
 function resolveConfigCwd(rawCwd: string | undefined, baseDir: string): string | undefined {
@@ -323,7 +359,7 @@ class StdioMcpClient implements McpClient {
 
 		const proc = spawn(config.command, config.args, {
 			cwd: config.cwd ?? this.cwd,
-			env: { ...process.env, ...(config.env ?? {}) },
+			env: createStdioMcpProcessEnv(config),
 			shell: process.platform === "win32",
 			stdio: ["pipe", "pipe", "pipe"],
 		});
@@ -338,7 +374,11 @@ class StdioMcpClient implements McpClient {
 		proc.on("error", (error) => this.rejectAll(error));
 		proc.on("exit", (code, signal) => {
 			const details = this.stderrTail.join("").trim();
-			const suffix = details ? `\n${details}` : "";
+			const encodingHint =
+				config.type === "stdio" && isLikelyPythonCommand(config.command) && details.includes("\uFFFD")
+					? "\nHint: stderr was not valid UTF-8; set PYTHONUTF8=1 and PYTHONIOENCODING=utf-8 in this MCP server env."
+					: "";
+			const suffix = details ? `\n${details}${encodingHint}` : "";
 			this.rejectAll(
 				new Error(`MCP server "${this.server.name}" exited (${code ?? signal ?? "unknown"}).${suffix}`),
 			);

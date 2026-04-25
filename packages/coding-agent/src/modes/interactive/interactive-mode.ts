@@ -46,7 +46,6 @@ import {
 	getAuthPath,
 	getDebugLogPath,
 	getShareViewerUrl,
-	getUpdateInstruction,
 	VERSION,
 } from "../../config.js";
 import { type AgentSession, type AgentSessionEvent, parseSkillBlock } from "../../core/agent-session.js";
@@ -651,13 +650,6 @@ export class InteractiveMode {
 	async run(): Promise<void> {
 		await this.init();
 
-		// Start version check asynchronously
-		this.checkForNewVersion().then((newVersion) => {
-			if (newVersion) {
-				this.showNewVersionNotification(newVersion);
-			}
-		});
-
 		// Start package update check asynchronously
 		this.checkForPackageUpdates().then((updates) => {
 			if (updates.length > 0) {
@@ -720,31 +712,6 @@ export class InteractiveMode {
 				const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
 				this.showError(errorMessage);
 			}
-		}
-	}
-
-	/**
-	 * Check npm registry for a newer version.
-	 */
-	private async checkForNewVersion(): Promise<string | undefined> {
-		if (process.env.PI_SKIP_VERSION_CHECK || process.env.PI_OFFLINE) return undefined;
-
-		try {
-			const response = await fetch("https://registry.npmjs.org/@mariozechner/pi-coding-agent/latest", {
-				signal: AbortSignal.timeout(10000),
-			});
-			if (!response.ok) return undefined;
-
-			const data = (await response.json()) as { version?: string };
-			const latestVersion = data.version;
-
-			if (latestVersion && latestVersion !== this.version) {
-				return latestVersion;
-			}
-
-			return undefined;
-		} catch {
-			return undefined;
 		}
 	}
 
@@ -3471,28 +3438,6 @@ export class InteractiveMode {
 	showWarning(warningMessage: string): void {
 		this.chatContainer.addChild(new Spacer(1));
 		this.chatContainer.addChild(new Text(theme.fg("warning", `Warning: ${warningMessage}`), 1, 0));
-		this.ui.requestRender();
-	}
-
-	showNewVersionNotification(newVersion: string): void {
-		const action = theme.fg("accent", getUpdateInstruction("@mariozechner/pi-coding-agent"));
-		const updateInstruction = theme.fg("muted", `New version ${newVersion} is available. `) + action;
-		const changelogUrl = theme.fg(
-			"accent",
-			"https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/CHANGELOG.md",
-		);
-		const changelogLine = theme.fg("muted", "Changelog: ") + changelogUrl;
-
-		this.chatContainer.addChild(new Spacer(1));
-		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
-		this.chatContainer.addChild(
-			new Text(
-				`${theme.bold(theme.fg("warning", "Update Available"))}\n${updateInstruction}\n${changelogLine}`,
-				1,
-				0,
-			),
-		);
-		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
 		this.ui.requestRender();
 	}
 

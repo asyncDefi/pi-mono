@@ -12,6 +12,7 @@ import { isLocalPath } from "../utils/paths.js";
 import { createEventBus, type EventBus } from "./event-bus.js";
 import { createExtensionRuntime, loadExtensionFromFactory, loadExtensions } from "./extensions/loader.js";
 import type { Extension, ExtensionFactory, ExtensionRuntime, LoadExtensionsResult } from "./extensions/types.js";
+import { loadMcpServers, type McpServer } from "./mcp.js";
 import { DefaultPackageManager, type PathMetadata } from "./package-manager.js";
 import type { PromptTemplate } from "./prompt-templates.js";
 import { loadPromptTemplates } from "./prompt-templates.js";
@@ -29,6 +30,7 @@ export interface ResourceExtensionPaths {
 export interface ResourceLoader {
 	getExtensions(): LoadExtensionsResult;
 	getSkills(): { skills: Skill[]; diagnostics: ResourceDiagnostic[] };
+	getMcpServers?(): { servers: McpServer[]; diagnostics: ResourceDiagnostic[] };
 	getPrompts(): { prompts: PromptTemplate[]; diagnostics: ResourceDiagnostic[] };
 	getThemes(): { themes: Theme[]; diagnostics: ResourceDiagnostic[] };
 	getAgentsFiles(): { agentsFiles: Array<{ path: string; content: string }> };
@@ -190,6 +192,8 @@ export class DefaultResourceLoader implements ResourceLoader {
 	private extensionsResult: LoadExtensionsResult;
 	private skills: Skill[];
 	private skillDiagnostics: ResourceDiagnostic[];
+	private mcpServers: McpServer[];
+	private mcpDiagnostics: ResourceDiagnostic[];
 	private prompts: PromptTemplate[];
 	private promptDiagnostics: ResourceDiagnostic[];
 	private themes: Theme[];
@@ -237,6 +241,8 @@ export class DefaultResourceLoader implements ResourceLoader {
 		this.extensionsResult = { extensions: [], errors: [], runtime: createExtensionRuntime() };
 		this.skills = [];
 		this.skillDiagnostics = [];
+		this.mcpServers = [];
+		this.mcpDiagnostics = [];
 		this.prompts = [];
 		this.promptDiagnostics = [];
 		this.themes = [];
@@ -257,6 +263,10 @@ export class DefaultResourceLoader implements ResourceLoader {
 
 	getSkills(): { skills: Skill[]; diagnostics: ResourceDiagnostic[] } {
 		return { skills: this.skills, diagnostics: this.skillDiagnostics };
+	}
+
+	getMcpServers(): { servers: McpServer[]; diagnostics: ResourceDiagnostic[] } {
+		return { servers: this.mcpServers, diagnostics: this.mcpDiagnostics };
 	}
 
 	getPrompts(): { prompts: PromptTemplate[]; diagnostics: ResourceDiagnostic[] } {
@@ -427,6 +437,10 @@ export class DefaultResourceLoader implements ResourceLoader {
 				this.skillDiagnostics.push({ type: "error", message: "Skill path does not exist", path: p });
 			}
 		}
+
+		const mcpResult = loadMcpServers({ cwd: this.cwd });
+		this.mcpServers = mcpResult.servers;
+		this.mcpDiagnostics = mcpResult.diagnostics;
 
 		const promptPaths = this.noPromptTemplates
 			? this.mergePaths(cliEnabledPrompts, this.additionalPromptTemplatePaths)

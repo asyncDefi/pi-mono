@@ -62,7 +62,6 @@ import type {
 } from "../../core/extensions/index.js";
 import { FooterDataProvider, type ReadonlyFooterDataProvider } from "../../core/footer-data-provider.js";
 import { type AppKeybinding, KeybindingsManager } from "../../core/keybindings.js";
-import { buildMcpToSkillPrompt } from "../../core/mcp-to-skill.js";
 import { createCompactionSummaryMessage } from "../../core/messages.js";
 import { defaultModelPerProvider, findExactModelReferenceMatch, resolveModelScope } from "../../core/model-resolver.js";
 import { DefaultPackageManager } from "../../core/package-manager.js";
@@ -2368,11 +2367,6 @@ export class InteractiveMode {
 				await this.handleContextSnapshotCommand();
 				return;
 			}
-			if (text === "/mcp-to-skill" || text.startsWith("/mcp-to-skill ")) {
-				this.editor.setText("");
-				await this.handleMcpToSkillCommand(text);
-				return;
-			}
 			if (text === "/model" || text.startsWith("/model ")) {
 				const searchTerm = text.startsWith("/model ") ? text.slice(7).trim() : undefined;
 				this.editor.setText("");
@@ -2559,6 +2553,7 @@ export class InteractiveMode {
 			thinkingLevel: this.session.thinkingLevel,
 			activeTools: this.session.getActiveToolNames(),
 			loadedSkillNames: this.session.loadedSkillNames,
+			loadedMcpNames: this.session.loadedMcpNames,
 			rawAgentSystemPromptDiffersFromCanonical: this.session.rawAgentSystemPrompt !== this.session.baseSystemPrompt,
 			packages: this.session.settingsManager.getPackages(),
 			extensionPaths: this.session.extensionRunner.getExtensionPaths(),
@@ -2571,6 +2566,11 @@ export class InteractiveMode {
 		fs.writeFileSync(
 			path.join(snapshotsDir, "loaded-skills.json"),
 			JSON.stringify(this.session.getLoadedSkillsSnapshotDetails(), null, 2),
+			"utf-8",
+		);
+		fs.writeFileSync(
+			path.join(snapshotsDir, "loaded-mcp.json"),
+			JSON.stringify(this.session.getLoadedMcpSnapshotDetails(), null, 2),
 			"utf-8",
 		);
 		fs.writeFileSync(
@@ -2590,7 +2590,7 @@ export class InteractiveMode {
 			JSON.stringify(
 				{
 					...outbound,
-					note: "Tools extracted from the last outbound provider HTTP payload (after before_provider_request). MCP and similar adapters usually inject tools there; this list is empty until at least one model request runs in this session.",
+					note: "Tools extracted from the last outbound provider HTTP payload (after before_provider_request). This list is empty until at least one model request runs in this session.",
 				},
 				null,
 				2,
@@ -3860,60 +3860,6 @@ export class InteractiveMode {
 			);
 			return { component: selector, focus: selector.getSettingsList() };
 		});
-	}
-
-	private async handleMcpToSkillCommand(text: string): Promise<void> {
-		try {
-			const args = text === "/mcp-to-skill" ? "" : text.slice("/mcp-to-skill".length).trim();
-			let capabilities = "";
-			let sourceLabel: string | undefined;
-
-			if (args) {
-				const normalizedArgs = args.replace(/^(["'])(.*)\1$/, "$2");
-				const resolvedPath = path.resolve(this.sessionManager.getCwd(), normalizedArgs);
-				if (fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isFile()) {
-					capabilities = fs.readFileSync(resolvedPath, "utf-8");
-					sourceLabel = resolvedPath;
-				} else {
-					capabilities = args;
-					sourceLabel = "inline MCP capabilities";
-				}
-			} else {
-				const edited = await this.showExtensionEditor("Paste MCP capabilities or spec", "");
-				if (edited === undefined) {
-					return;
-				}
-				capabilities = edited;
-				sourceLabel = "editor input";
-			}
-
-			if (!capabilities.trim()) {
-				this.showError("/mcp-to-skill requires MCP capabilities, a spec, or a path to a text file.");
-				return;
-			}
-
-			const projectSkillDir = path.resolve(this.sessionManager.getCwd(), CONFIG_DIR_NAME, "skills");
-			fs.mkdirSync(projectSkillDir, { recursive: true });
-
-			const prompt = buildMcpToSkillPrompt({
-				capabilities,
-				sourceLabel,
-				projectSkillDir,
-			});
-
-			if (this.session.isStreaming) {
-				await this.session.prompt(prompt, {
-					expandPromptTemplates: false,
-					streamingBehavior: "followUp",
-				});
-				this.showStatus("Queued MCP-to-skill request");
-				return;
-			}
-
-			await this.session.prompt(prompt, { expandPromptTemplates: false });
-		} catch (error) {
-			this.showError(error instanceof Error ? error.message : String(error));
-		}
 	}
 
 	private async handleModelCommand(searchTerm?: string): Promise<void> {

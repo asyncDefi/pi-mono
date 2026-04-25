@@ -51,7 +51,7 @@ export interface CreateAgentSessionOptions {
 	 * Optional allowlist of tool names.
 	 *
 	 * When omitted, pi enables the default built-in tools (read, bash, edit, write,
-	 * skills_context, dont_destroy_notes) and leaves extension/custom tools enabled.
+	 * skills_context, mcp_context, dont_destroy_notes) and leaves extension/custom tools enabled.
 	 * When provided, only the listed tool names are enabled.
 	 */
 	tools?: string[];
@@ -244,7 +244,15 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		thinkingLevel = "off";
 	}
 
-	const defaultActiveToolNames: ToolName[] = ["read", "bash", "edit", "write", "skills_context", "dont_destroy_notes"];
+	const defaultActiveToolNames: ToolName[] = [
+		"read",
+		"bash",
+		"edit",
+		"write",
+		"skills_context",
+		"mcp_context",
+		"dont_destroy_notes",
+	];
 	const initialActiveToolNames: string[] = options.tools ? [...options.tools] : defaultActiveToolNames;
 
 	let agent: Agent;

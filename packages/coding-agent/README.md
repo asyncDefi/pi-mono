@@ -163,7 +163,6 @@ Type `/` in the editor to trigger commands. [Extensions](#extensions) can regist
 |---------|-------------|
 | `/login`, `/logout` | OAuth authentication |
 | `/model` | Switch models |
-| `/mcp-to-skill [file-or-capabilities]` | Turn provided MCP capabilities into a project-local skill under `.pi/skills/` |
 | `/scoped-models` | Enable/disable models for Ctrl+P cycling |
 | `/settings` | Thinking level, theme, message delivery, transport |
 | `/resume` | Pick from previous sessions |
@@ -309,7 +308,7 @@ Place in `~/.pi/agent/prompts/`, `.pi/prompts/`, or a [pi package](#pi-packages)
 
 ### Skills
 
-On-demand capability packages following the [Agent Skills standard](https://agentskills.io). Invoke via `/skill:name` or let the agent load them automatically. Use `/mcp-to-skill` to turn pasted or file-backed MCP capabilities into a project-local skill under `.pi/skills/`.
+On-demand capability packages following the [Agent Skills standard](https://agentskills.io). Invoke via `/skill:name` or let the agent load them automatically.
 
 ```markdown
 <!-- ~/.pi/agent/skills/my-skill/SKILL.md -->
@@ -322,6 +321,12 @@ Use this skill when the user asks about X.
 ```
 
 Place in `~/.pi/agent/skills/`, `~/.agents/skills/`, `.pi/skills/`, or `.agents/skills/` (from `cwd` up through parent directories) or a [pi package](#pi-packages) to share with others. See [docs/skills.md](docs/skills.md).
+
+### MCP
+
+Project MCP servers are configured in `.pi/mcp.json` and loaded on demand with the built-in `mcp_context` tool. Loaded MCP servers expose their tools to the model until unloaded; unloaded servers stay out of the tool context.
+
+See [docs/mcp.md](docs/mcp.md).
 
 ### Extensions
 
@@ -348,7 +353,6 @@ The default export can also be `async`. pi waits for async extension factories b
 - Status lines, headers, footers
 - Git checkpointing and auto-commit
 - SSH and sandbox execution
-- MCP server integration
 - Make pi look like Claude Code
 - Games while waiting (yes, Doom runs)
 - ...anything you can dream up
@@ -446,9 +450,9 @@ See [docs/rpc.md](docs/rpc.md) for the protocol.
 
 ## Philosophy
 
-Pi is aggressively extensible so it doesn't have to dictate your workflow. Features that other tools bake in can be built with [extensions](#extensions), [skills](#skills), or installed from third-party [pi packages](#pi-packages). This keeps the core minimal while letting you shape pi to fit how you work.
+Pi is aggressively extensible so it doesn't have to dictate your workflow. Features that other tools bake in can be built with [extensions](#extensions), [skills](#skills), [MCP](#mcp), or installed from third-party [pi packages](#pi-packages). This keeps the core minimal while letting you shape pi to fit how you work.
 
-**No MCP.** Build CLI tools with READMEs (see [Skills](#skills)), or build an extension that adds MCP support. [Why?](https://mariozechner.at/posts/2025-11-02-what-if-you-dont-need-mcp/)
+**MCP is explicit.** Configure project servers in `.pi/mcp.json` and load/unload them with `mcp_context` so unused MCP tools stay out of the model context.
 
 **No sub-agents.** There's many ways to do this. Spawn pi instances via tmux, or build your own with [extensions](#extensions), or install a package that does it your way.
 

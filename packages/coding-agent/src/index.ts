@@ -146,6 +146,26 @@ export {
 } from "./core/extensions/index.js";
 // Footer data provider (git branch + extension statuses - data not otherwise available to extensions)
 export type { ReadonlyFooterDataProvider } from "./core/footer-data-provider.js";
+export {
+	createMcpClient,
+	createMcpToolDefinition,
+	formatMcpServersForPrompt,
+	type LoadedMcpServer,
+	type LoadedMcpTool,
+	type LoadMcpServersOptions,
+	type LoadMcpServersResult,
+	loadMcpServers,
+	type McpClient,
+	type McpClientFactory,
+	type McpHttpConfig,
+	type McpServer,
+	type McpServerConfig,
+	type McpStdioConfig,
+	type McpTool,
+	type McpToolCallResult,
+	type McpToolDetails,
+	mcpToolName,
+} from "./core/mcp.js";
 export { convertToLlm } from "./core/messages.js";
 export { ModelRegistry } from "./core/model-registry.js";
 export type {
@@ -244,6 +264,7 @@ export {
 	createGrepToolDefinition,
 	createLocalBashOperations,
 	createLsToolDefinition,
+	createMcpContextToolDefinition,
 	createReadToolDefinition,
 	createWriteToolDefinition,
 	DEFAULT_MAX_BYTES,
@@ -265,6 +286,7 @@ export {
 	type LsToolDetails,
 	type LsToolInput,
 	type LsToolOptions,
+	type McpContextToolInput,
 	type ReadOperations,
 	type ReadToolDetails,
 	type ReadToolInput,

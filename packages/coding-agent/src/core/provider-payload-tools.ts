@@ -1,6 +1,6 @@
 /**
  * Normalize `tools` from a provider request body after extension hooks such as
- * `before_provider_request` (where MCP adapters typically merge extra tools).
+ * `before_provider_request`.
  */
 
 export type OutboundToolSummary = {

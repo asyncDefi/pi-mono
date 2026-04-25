@@ -245,6 +245,23 @@ export class ExtensionRunner {
 	private skillsContextListDiscoveredFn: () => string[] = () => [];
 	private skillsContextHistoryFn: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> =
 		() => [];
+	private mcpContextLoadFn: (name: string) => Promise<{
+		loaded: boolean;
+		alreadyLoaded: boolean;
+		toolNames: string[];
+	}> = async () => ({
+		loaded: false,
+		alreadyLoaded: false,
+		toolNames: [],
+	});
+	private mcpContextUnloadFn: (name: string) => Promise<{ unloaded: boolean; wasLoaded: boolean }> = async () => ({
+		unloaded: false,
+		wasLoaded: false,
+	});
+	private mcpContextListActiveFn: () => string[] = () => [];
+	private mcpContextListDiscoveredFn: () => string[] = () => [];
+	private mcpContextHistoryFn: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> =
+		() => [];
 	private dontDestroyNotesSetFn: (slot: number, text: string) => { set: boolean; truncated: boolean; limit: number } =
 		() => ({ set: false, truncated: false, limit: 0 });
 	private dontDestroyNotesClearFn: (slot: number) => { cleared: boolean } = () => ({ cleared: false });
@@ -319,6 +336,11 @@ export class ExtensionRunner {
 		this.skillsContextListActiveFn = contextActions.skillsContextListActive;
 		this.skillsContextListDiscoveredFn = contextActions.skillsContextListDiscovered ?? (() => []);
 		this.skillsContextHistoryFn = contextActions.skillsContextHistory;
+		this.mcpContextLoadFn = contextActions.mcpContextLoad;
+		this.mcpContextUnloadFn = contextActions.mcpContextUnload;
+		this.mcpContextListActiveFn = contextActions.mcpContextListActive;
+		this.mcpContextListDiscoveredFn = contextActions.mcpContextListDiscovered;
+		this.mcpContextHistoryFn = contextActions.mcpContextHistory;
 		this.dontDestroyNotesSetFn = contextActions.dontDestroyNotesSet;
 		this.dontDestroyNotesClearFn = contextActions.dontDestroyNotesClear;
 		this.dontDestroyNotesClearAllFn = contextActions.dontDestroyNotesClearAll;
@@ -623,6 +645,16 @@ export class ExtensionRunner {
 					listActive: () => runner.skillsContextListActiveFn(),
 					listDiscovered: () => runner.skillsContextListDiscoveredFn(),
 					history: () => runner.skillsContextHistoryFn(),
+				};
+			},
+			get mcpContext() {
+				runner.assertActive();
+				return {
+					load: (name: string) => runner.mcpContextLoadFn(name),
+					unload: (name: string) => runner.mcpContextUnloadFn(name),
+					listActive: () => runner.mcpContextListActiveFn(),
+					listDiscovered: () => runner.mcpContextListDiscoveredFn(),
+					history: () => runner.mcpContextHistoryFn(),
 				};
 			},
 			get dontDestroyNotes() {

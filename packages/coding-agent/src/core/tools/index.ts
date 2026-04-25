@@ -48,6 +48,11 @@ export {
 	type LsToolOptions,
 } from "./ls.js";
 export {
+	createMcpContextTool,
+	createMcpContextToolDefinition,
+	type McpContextToolInput,
+} from "./mcp-context.js";
+export {
 	createReadTool,
 	createReadToolDefinition,
 	type ReadOperations,
@@ -86,6 +91,7 @@ import { createEditTool, createEditToolDefinition, type EditToolOptions } from "
 import { createFindTool, createFindToolDefinition, type FindToolOptions } from "./find.js";
 import { createGrepTool, createGrepToolDefinition, type GrepToolOptions } from "./grep.js";
 import { createLsTool, createLsToolDefinition, type LsToolOptions } from "./ls.js";
+import { createMcpContextTool, createMcpContextToolDefinition } from "./mcp-context.js";
 import { createReadTool, createReadToolDefinition, type ReadToolOptions } from "./read.js";
 import { createSkillsContextTool, createSkillsContextToolDefinition } from "./skills-context.js";
 import { createWriteTool, createWriteToolDefinition, type WriteToolOptions } from "./write.js";
@@ -101,6 +107,7 @@ export type ToolName =
 	| "find"
 	| "ls"
 	| "skills_context"
+	| "mcp_context"
 	| "dont_destroy_notes";
 export const allToolNames: Set<ToolName> = new Set([
 	"read",
@@ -111,6 +118,7 @@ export const allToolNames: Set<ToolName> = new Set([
 	"find",
 	"ls",
 	"skills_context",
+	"mcp_context",
 	"dont_destroy_notes",
 ]);
 
@@ -142,6 +150,8 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createLsToolDefinition(cwd, options?.ls);
 		case "skills_context":
 			return createSkillsContextToolDefinition();
+		case "mcp_context":
+			return createMcpContextToolDefinition();
 		case "dont_destroy_notes":
 			return createDontDestroyNotesToolDefinition();
 		default:
@@ -167,6 +177,8 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createLsTool(cwd, options?.ls);
 		case "skills_context":
 			return createSkillsContextTool();
+		case "mcp_context":
+			return createMcpContextTool();
 		case "dont_destroy_notes":
 			return createDontDestroyNotesTool();
 		default:
@@ -202,6 +214,7 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		find: createFindToolDefinition(cwd, options?.find),
 		ls: createLsToolDefinition(cwd, options?.ls),
 		skills_context: createSkillsContextToolDefinition(),
+		mcp_context: createMcpContextToolDefinition(),
 		dont_destroy_notes: createDontDestroyNotesToolDefinition(),
 	};
 }
@@ -234,6 +247,7 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		find: createFindTool(cwd, options?.find),
 		ls: createLsTool(cwd, options?.ls),
 		skills_context: createSkillsContextTool(),
+		mcp_context: createMcpContextTool(),
 		dont_destroy_notes: createDontDestroyNotesTool(),
 	};
 }

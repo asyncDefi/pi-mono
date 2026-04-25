@@ -3,6 +3,7 @@
  */
 
 import { getDocsPath, getExamplesPath, getReadmePath } from "../config.js";
+import { formatMcpServersForPrompt, type LoadedMcpServer } from "./mcp.js";
 import { formatSkillsForPrompt, type Skill } from "./skills.js";
 
 export interface BuildSystemPromptOptions {
@@ -22,6 +23,8 @@ export interface BuildSystemPromptOptions {
 	contextFiles?: Array<{ path: string; content: string }>;
 	/** Pre-loaded skills. */
 	skills?: Skill[];
+	/** Pre-loaded MCP servers. */
+	mcpServers?: LoadedMcpServer[];
 	/** Persisted notes that must not be lost to compaction (7 slots). */
 	dontDestroyNotes?: Array<string | null>;
 }
@@ -55,6 +58,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 		cwd,
 		contextFiles: providedContextFiles,
 		skills: providedSkills,
+		mcpServers: providedMcpServers,
 		dontDestroyNotes,
 	} = options;
 	const resolvedCwd = cwd;
@@ -70,6 +74,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 
 	const contextFiles = providedContextFiles ?? [];
 	const skills = providedSkills ?? [];
+	const mcpServers = providedMcpServers ?? [];
 
 	// Build tools list based on selected tools.
 	// A tool appears in Available tools only when the caller provides a one-line snippet.
@@ -99,6 +104,10 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 		// Append loaded skills (skills_context); not gated on read — load is the mechanism
 		if (skills.length > 0) {
 			soul += formatSkillsForPrompt(skills, { embedBodies: true });
+		}
+
+		if (mcpServers.length > 0) {
+			soul += formatMcpServersForPrompt(mcpServers);
 		}
 
 		// Add date and working directory last
@@ -149,6 +158,9 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	addGuideline(
 		"Load/unload skills with skills_context (actions load, unload, list_active, list_discovered or list, history); use list_discovered or list to answer which skills exist without reading project config files",
 	);
+	addGuideline(
+		"Load/unload MCP servers with mcp_context (actions load, unload, list_active, list_discovered or list, history); MCP tools are available only while their server is loaded",
+	);
 	addGuideline("Use dont_destroy_notes to maintain short durable notes across compaction (7 slots, 2000 chars total)");
 
 	const guidelines = guidelinesList.map((g) => `- ${g}`).join("\n");
@@ -162,7 +174,7 @@ Pi documentation (read only when the user asks about pi itself, its SDK, extensi
 - Main documentation: ${readmePath}
 - Additional docs: ${docsPath}
 - Examples: ${examplesPath} (extensions, custom tools, SDK)
-- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md)
+- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), MCP (docs/mcp.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md)
 - When working on pi topics, read the docs and examples, and follow .md cross-references before implementing
 - Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)`;
 
@@ -182,6 +194,10 @@ Pi documentation (read only when the user asks about pi itself, its SDK, extensi
 	// Append loaded skills (skills_context); not gated on read — load is the mechanism
 	if (skills.length > 0) {
 		soul += formatSkillsForPrompt(skills, { embedBodies: true });
+	}
+
+	if (mcpServers.length > 0) {
+		soul += formatMcpServersForPrompt(mcpServers);
 	}
 
 	// Add date and working directory last

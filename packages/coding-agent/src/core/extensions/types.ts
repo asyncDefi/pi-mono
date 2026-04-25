@@ -315,6 +315,22 @@ export interface ExtensionContext {
 		/** Get last N lifecycle events (newest last). */
 		history: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }>;
 	};
+	/**
+	 * Manage the set of MCP servers from .pi/mcp.json that are currently included in the LLM/tool context.
+	 * Loading a server connects to it, lists tools, and exposes those tools until unloaded.
+	 */
+	mcpContext: {
+		/** Load a configured MCP server into the active context set (by name). */
+		load: (name: string) => Promise<{ loaded: boolean; alreadyLoaded: boolean; toolNames: string[] }>;
+		/** Unload a configured MCP server and remove its tools from context. */
+		unload: (name: string) => Promise<{ unloaded: boolean; wasLoaded: boolean }>;
+		/** List active MCP servers and tool names currently included in context. */
+		listActive: () => string[];
+		/** List all configured MCP servers from .pi/mcp.json. */
+		listDiscovered: () => string[];
+		/** Get last N lifecycle events (newest last). */
+		history: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }>;
+	};
 	/** Manage durable notes included in the system prompt (not compacted). */
 	dontDestroyNotes: {
 		set: (slot: number, text: string) => { set: boolean; truncated: boolean; limit: number };
@@ -1504,6 +1520,11 @@ export interface ExtensionContextActions {
 	skillsContextListActive: () => string[];
 	skillsContextListDiscovered: () => string[];
 	skillsContextHistory: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }>;
+	mcpContextLoad: (name: string) => Promise<{ loaded: boolean; alreadyLoaded: boolean; toolNames: string[] }>;
+	mcpContextUnload: (name: string) => Promise<{ unloaded: boolean; wasLoaded: boolean }>;
+	mcpContextListActive: () => string[];
+	mcpContextListDiscovered: () => string[];
+	mcpContextHistory: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }>;
 	dontDestroyNotesSet: (slot: number, text: string) => { set: boolean; truncated: boolean; limit: number };
 	dontDestroyNotesClear: (slot: number) => { cleared: boolean };
 	dontDestroyNotesClearAll: () => { cleared: boolean };

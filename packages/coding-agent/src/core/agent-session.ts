@@ -69,6 +69,16 @@ import {
 	wrapRegisteredTools,
 } from "./extensions/index.js";
 import { emitSessionShutdownEvent } from "./extensions/runner.js";
+import {
+	createMcpClient,
+	createMcpToolDefinition,
+	type LoadedMcpServer,
+	type LoadedMcpTool,
+	type McpClientFactory,
+	type McpServer,
+	type McpTool,
+	mcpToolName,
+} from "./mcp.js";
 import type { BashExecutionMessage, CustomMessage } from "./messages.js";
 import type { ModelRegistry } from "./model-registry.js";
 import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.js";
@@ -151,8 +161,10 @@ export interface AgentSessionConfig {
 	customTools?: ToolDefinition[];
 	/** Model registry for API key resolution and model discovery */
 	modelRegistry: ModelRegistry;
-	/** Initial active built-in tool names. Default matches SDK: read, bash, edit, write, skills_context, dont_destroy_notes */
+	/** Initial active built-in tool names. Default matches SDK: read, bash, edit, write, skills_context, mcp_context, dont_destroy_notes */
 	initialActiveToolNames?: string[];
+	/** Factory for MCP clients. Tests can override this to avoid spawning real servers. */
+	mcpClientFactory?: McpClientFactory;
 	/** Optional allowlist of tool names. When provided, only these tool names are exposed. */
 	allowedToolNames?: string[];
 	/**
@@ -291,6 +303,7 @@ export class AgentSession {
 	private _extensionShutdownHandler?: ShutdownHandler;
 	private _extensionErrorListener?: ExtensionErrorListener;
 	private _extensionErrorUnsubscriber?: () => void;
+	private _mcpClientFactory: McpClientFactory;
 
 	// Model registry for API key resolution
 	private _modelRegistry: ModelRegistry;
@@ -317,6 +330,14 @@ export class AgentSession {
 	private _skillsContextHistory: Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> = [];
 
 	// =========================================================================
+	// MCP context lifecycle (active subset + short history)
+	// =========================================================================
+	private static readonly MCP_CONTEXT_CUSTOM_TYPE = "pi.mcp_context";
+	private _activeMcpNames: Set<string> = new Set();
+	private _loadedMcpServers: Map<string, LoadedMcpServer> = new Map();
+	private _mcpContextHistory: Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> = [];
+
+	// =========================================================================
 	// Dont-destroy notes (persisted, never compacted)
 	// =========================================================================
 	private static readonly DONT_DESTROY_CUSTOM_TYPE = "pi.dont_destroy";
@@ -333,6 +354,7 @@ export class AgentSession {
 		this._customTools = config.customTools ?? [];
 		this._cwd = config.cwd;
 		this._modelRegistry = config.modelRegistry;
+		this._mcpClientFactory = config.mcpClientFactory ?? createMcpClient;
 		this._extensionRunnerRef = config.extensionRunnerRef;
 		this._initialActiveToolNames = config.initialActiveToolNames;
 		this._allowedToolNames = config.allowedToolNames ? new Set(config.allowedToolNames) : undefined;
@@ -345,6 +367,7 @@ export class AgentSession {
 		this._installAgentToolHooks();
 
 		this._restoreSkillsContextFromSession();
+		this._restoreMcpContextFromSession();
 		this._restoreDontDestroyNotesFromSession();
 
 		this._buildRuntime({
@@ -565,6 +588,200 @@ export class AgentSession {
 
 	private _getSkillsContextHistory(): Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> {
 		return [...this._skillsContextHistory];
+	}
+
+	private _restoreMcpContextFromSession(): void {
+		const entries = this.sessionManager.getEntries();
+		const history: Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> = [];
+		const active = new Set<string>();
+
+		for (const entry of entries) {
+			if (entry.type !== "custom") continue;
+			if (entry.customType !== AgentSession.MCP_CONTEXT_CUSTOM_TYPE) continue;
+			const data = entry.data as { action?: unknown; name?: unknown } | undefined;
+			const action = data?.action;
+			const name = data?.name;
+			if ((action !== "loaded" && action !== "unloaded") || typeof name !== "string" || name.trim() === "") {
+				continue;
+			}
+			const normalizedName = name.trim();
+			if (action === "loaded") {
+				active.add(normalizedName);
+			} else {
+				active.delete(normalizedName);
+			}
+			history.push({ timestamp: entry.timestamp, action, name: normalizedName });
+		}
+
+		this._activeMcpNames = active;
+		this._mcpContextHistory = history.slice(-5);
+	}
+
+	private _getMcpServers(): McpServer[] {
+		return this._resourceLoader.getMcpServers?.().servers ?? [];
+	}
+
+	private _getDiscoveredMcpByName(name: string): McpServer | undefined {
+		const normalized = name.trim();
+		if (!normalized) return undefined;
+		return this._getMcpServers().find((server) => server.name === normalized);
+	}
+
+	private _recordMcpContextEvent(action: "loaded" | "unloaded", name: string): void {
+		const timestamp = new Date().toISOString();
+		this._mcpContextHistory = [...this._mcpContextHistory, { timestamp, action, name }].slice(-5);
+		this.sessionManager.appendCustomEntry(AgentSession.MCP_CONTEXT_CUSTOM_TYPE, { action, name });
+	}
+
+	private async _syncActiveMcpWithDiscovery(): Promise<void> {
+		const discovered = new Set(this._getMcpServers().map((server) => server.name));
+		const toRemove: string[] = [];
+		for (const name of this._activeMcpNames) {
+			if (!discovered.has(name)) {
+				toRemove.push(name);
+			}
+		}
+		for (const name of toRemove) {
+			this._activeMcpNames.delete(name);
+			const loaded = this._loadedMcpServers.get(name);
+			this._loadedMcpServers.delete(name);
+			await loaded?.client.close();
+			this._recordMcpContextEvent("unloaded", name);
+		}
+	}
+
+	private _createLoadedMcpTools(server: McpServer, tools: McpTool[]): LoadedMcpTool[] {
+		const used = new Set<string>();
+		for (const loaded of this._loadedMcpServers.values()) {
+			for (const loadedTool of loaded.tools) {
+				used.add(loadedTool.toolName);
+			}
+		}
+
+		return tools.map((tool, index) => {
+			let toolName = mcpToolName(server.name, tool.name);
+			if (used.has(toolName)) {
+				toolName = mcpToolName(server.name, `${tool.name}-${index + 1}`);
+			}
+			used.add(toolName);
+			return { tool, toolName };
+		});
+	}
+
+	private async _loadMcpIntoContext(name: string): Promise<{
+		loaded: boolean;
+		alreadyLoaded: boolean;
+		toolNames: string[];
+	}> {
+		const normalized = name.trim();
+		if (!normalized) {
+			throw new Error("MCP server name is required");
+		}
+		const existing = this._loadedMcpServers.get(normalized);
+		if (existing) {
+			return {
+				loaded: false,
+				alreadyLoaded: true,
+				toolNames: existing.tools.map((tool) => tool.toolName),
+			};
+		}
+
+		const discovered = this._getDiscoveredMcpByName(normalized);
+		if (!discovered) {
+			throw new Error(`Unknown MCP server: ${normalized}`);
+		}
+
+		const wasActive = this._activeMcpNames.has(discovered.name);
+		const client = this._mcpClientFactory(discovered, this._cwd);
+		try {
+			await client.connect();
+			const tools = await client.listTools();
+			const loaded: LoadedMcpServer = {
+				server: discovered,
+				client,
+				tools: this._createLoadedMcpTools(discovered, tools),
+			};
+			this._loadedMcpServers.set(discovered.name, loaded);
+			this._activeMcpNames.add(discovered.name);
+			if (!wasActive) {
+				this._recordMcpContextEvent("loaded", discovered.name);
+			}
+			this._refreshToolRegistry({
+				activeToolNames: [...this.getActiveToolNames(), ...loaded.tools.map((tool) => tool.toolName)],
+			});
+			return {
+				loaded: true,
+				alreadyLoaded: false,
+				toolNames: loaded.tools.map((tool) => tool.toolName),
+			};
+		} catch (error) {
+			await client.close();
+			throw error;
+		}
+	}
+
+	private async _unloadMcpFromContext(name: string): Promise<{ unloaded: boolean; wasLoaded: boolean }> {
+		const normalized = name.trim();
+		if (!normalized) {
+			throw new Error("MCP server name is required");
+		}
+
+		const wasActive = this._activeMcpNames.delete(normalized);
+		const loaded = this._loadedMcpServers.get(normalized);
+		this._loadedMcpServers.delete(normalized);
+		if (!wasActive && !loaded) {
+			return { unloaded: false, wasLoaded: false };
+		}
+
+		const removedToolNames = new Set(loaded?.tools.map((tool) => tool.toolName) ?? []);
+		await loaded?.client.close();
+		this._recordMcpContextEvent("unloaded", normalized);
+		this._refreshToolRegistry({
+			activeToolNames: this.getActiveToolNames().filter((toolName) => !removedToolNames.has(toolName)),
+		});
+		return { unloaded: true, wasLoaded: true };
+	}
+
+	private _listActiveMcp(): string[] {
+		if (this._activeMcpNames.size === 0) {
+			return [];
+		}
+		return Array.from(this._activeMcpNames.values())
+			.sort((a, b) => a.localeCompare(b))
+			.map((name) => {
+				const loaded = this._loadedMcpServers.get(name);
+				if (!loaded) {
+					return `${name}: pending reconnect`;
+				}
+				const toolNames = loaded.tools.map((tool) => tool.toolName);
+				return toolNames.length > 0 ? `${name}: ${toolNames.join(", ")}` : `${name}: (no tools)`;
+			});
+	}
+
+	private _listDiscoveredMcpLines(): string[] {
+		const servers = this._getMcpServers();
+		if (servers.length === 0) {
+			return ["(no MCP servers configured)"];
+		}
+		return [...servers]
+			.sort((a, b) => a.name.localeCompare(b.name))
+			.map((server) => `${server.name}: ${server.description}`);
+	}
+
+	private _getMcpContextHistory(): Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> {
+		return [...this._mcpContextHistory];
+	}
+
+	private async _ensureActiveMcpLoaded(): Promise<void> {
+		if (!this.getActiveToolNames().includes("mcp_context")) {
+			return;
+		}
+		for (const name of Array.from(this._activeMcpNames.values())) {
+			if (this._loadedMcpServers.has(name)) {
+				continue;
+			}
+			await this._loadMcpIntoContext(name);
+		}
 	}
 
 	/** Model registry for API key resolution and model discovery */
@@ -969,6 +1186,10 @@ export class AgentSession {
 		this._extensionRunner.invalidate(
 			"This extension instance is stale after session replacement or reload. Use the provided replacement-session context instead.",
 		);
+		for (const loaded of this._loadedMcpServers.values()) {
+			loaded.client.close().catch(() => {});
+		}
+		this._loadedMcpServers.clear();
 		this._disconnectFromAgent();
 		this._eventListeners = [];
 	}
@@ -1025,6 +1246,11 @@ export class AgentSession {
 		return this._listActiveSkills();
 	}
 
+	/** MCP server names currently active via mcp_context. */
+	get loadedMcpNames(): string[] {
+		return Array.from(this._activeMcpNames.values()).sort((a, b) => a.localeCompare(b));
+	}
+
 	/** Loaded skills with paths (for snapshots); only entries still present in discovery. */
 	getLoadedSkillsSnapshotDetails(): Array<{ name: string; description: string; filePath: string }> {
 		const active = new Set(this._listActiveSkills());
@@ -1032,6 +1258,25 @@ export class AgentSession {
 			.getSkills()
 			.skills.filter((s) => active.has(s.name))
 			.map((s) => ({ name: s.name, description: s.description, filePath: s.filePath }));
+	}
+
+	/** Loaded MCP servers and tool names (for snapshots). */
+	getLoadedMcpSnapshotDetails(): Array<{
+		name: string;
+		description: string;
+		configPath: string;
+		tools: Array<{ name: string; toolName: string; description?: string }>;
+	}> {
+		return Array.from(this._loadedMcpServers.values()).map((loaded) => ({
+			name: loaded.server.name,
+			description: loaded.server.description,
+			configPath: loaded.server.configPath,
+			tools: loaded.tools.map((tool) => ({
+				name: tool.tool.name,
+				toolName: tool.toolName,
+				description: tool.tool.description,
+			})),
+		}));
 	}
 
 	/** Current retry attempt (0 if not retrying) */
@@ -1204,11 +1449,13 @@ export class AgentSession {
 		const appendSystemPrompt =
 			loaderAppendSystemPrompt.length > 0 ? loaderAppendSystemPrompt.join("\n\n") : undefined;
 		const loadedSkills = this._resourceLoader.getSkills().skills.filter((s) => this._activeSkillNames.has(s.name));
+		const loadedMcpServers = Array.from(this._loadedMcpServers.values());
 		const loadedContextFiles = this._resourceLoader.getAgentsFiles().agentsFiles;
 
 		this._baseSystemPromptOptions = {
 			cwd: this._cwd,
 			skills: loadedSkills,
+			mcpServers: loadedMcpServers,
 			contextFiles: loadedContextFiles,
 			customPrompt: loaderSystemPrompt,
 			appendSystemPrompt,
@@ -1291,6 +1538,8 @@ export class AgentSession {
 				preflightResult?.(true);
 				return;
 			}
+
+			await this._ensureActiveMcpLoaded();
 
 			// Flush any pending bash messages before the new prompt
 			this._flushPendingBashMessages();
@@ -2516,6 +2765,11 @@ export class AgentSession {
 				skillsContextListActive: () => this._listActiveSkills(),
 				skillsContextListDiscovered: () => this._listDiscoveredSkillLines(),
 				skillsContextHistory: () => this._getSkillsContextHistory(),
+				mcpContextLoad: (name) => this._loadMcpIntoContext(name),
+				mcpContextUnload: (name) => this._unloadMcpFromContext(name),
+				mcpContextListActive: () => this._listActiveMcp(),
+				mcpContextListDiscovered: () => this._listDiscoveredMcpLines(),
+				mcpContextHistory: () => this._getMcpContextHistory(),
 				dontDestroyNotesSet: (slot, text) => this._setDontDestroyNote(slot, text),
 				dontDestroyNotesClear: (slot) => this._clearDontDestroyNote(slot),
 				dontDestroyNotesClearAll: () => this._clearAllDontDestroyNotes(),
@@ -2542,12 +2796,19 @@ export class AgentSession {
 		const isAllowedTool = (name: string): boolean => !allowedToolNames || allowedToolNames.has(name);
 
 		const registeredTools = this._extensionRunner.getAllRegisteredTools();
+		const registeredMcpTools = Array.from(this._loadedMcpServers.values()).flatMap((loaded) =>
+			loaded.tools.map((tool) => ({
+				definition: createMcpToolDefinition(loaded, tool),
+				sourceInfo: loaded.server.sourceInfo,
+			})),
+		);
 		const allCustomTools = [
 			...registeredTools,
 			...this._customTools.map((definition) => ({
 				definition,
 				sourceInfo: createSyntheticSourceInfo(`<sdk:${definition.name}>`, { source: "sdk" }),
 			})),
+			...registeredMcpTools,
 		].filter((tool) => isAllowedTool(tool.definition.name));
 		const definitionRegistry = new Map<string, ToolDefinitionEntry>(
 			Array.from(this._baseToolDefinitions.entries())
@@ -2672,7 +2933,7 @@ export class AgentSession {
 
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)
-			: ["read", "bash", "edit", "write", "skills_context", "dont_destroy_notes"];
+			: ["read", "bash", "edit", "write", "skills_context", "mcp_context", "dont_destroy_notes"];
 		const baseActiveToolNames = options.activeToolNames ?? defaultActiveToolNames;
 		this._refreshToolRegistry({
 			activeToolNames: baseActiveToolNames,
@@ -2687,6 +2948,7 @@ export class AgentSession {
 		resetApiProviders();
 		await this._resourceLoader.reload();
 		this._syncActiveSkillsWithDiscovery();
+		await this._syncActiveMcpWithDiscovery();
 		this._buildRuntime({
 			activeToolNames: this.getActiveToolNames(),
 			flagValues: previousFlagValues,

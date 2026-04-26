@@ -40,7 +40,7 @@ describe("ToolExecutionComponent parity", () => {
 		initTheme("dark");
 	});
 
-	test("renders tool name header, bracket, then result (hides call renderer in default shell)", () => {
+	test("renders call preview until a non-empty result is available in default shell", () => {
 		const toolDefinition: ToolDefinition = {
 			...createBaseToolDefinition(),
 			renderCall: () => new Text("custom call", 0, 0),
@@ -59,8 +59,7 @@ describe("ToolExecutionComponent parity", () => {
 		{
 			const lines = renderedLines(component);
 			expect(lines[0]).toBe("◌ custom_tool");
-			expect(lines[1]).toBe("└");
-			expect(lines.join("\n")).not.toContain("custom call");
+			expect(lines[1]).toContain("└ custom call");
 		}
 
 		component.updateResult(
@@ -114,8 +113,7 @@ describe("ToolExecutionComponent parity", () => {
 		);
 		const lines = renderedLines(component);
 		expect(lines[0]).toBe("◌ read");
-		expect(lines[1]).toBe("└");
-		expect(lines.join("\n")).not.toContain("README.md");
+		expect(lines[1]).toContain("└ read README.md");
 	});
 
 	test("bash execute emits an initial empty partial update before output arrives", async () => {
@@ -324,7 +322,26 @@ describe("ToolExecutionComponent parity", () => {
 		expect(rendered).toContain("done");
 	});
 
-	test("renders write tool header without showing call previews", () => {
+	test("shows argument preview when custom renderers are absent and no result is available", () => {
+		const toolDefinition: ToolDefinition = {
+			...createBaseToolDefinition(),
+		};
+
+		const component = new ToolExecutionComponent(
+			"custom_tool",
+			"tool-6b",
+			{ foo: "bar" },
+			{},
+			toolDefinition,
+			createFakeTui(),
+			process.cwd(),
+		);
+		const lines = renderedLines(component);
+		expect(lines[0]).toBe("◌ custom_tool");
+		expect(lines[1]).toContain('└ {"foo":"bar"}');
+	});
+
+	test("renders write tool call preview while pending", () => {
 		const component = new ToolExecutionComponent(
 			"write",
 			"tool-7",
@@ -336,9 +353,35 @@ describe("ToolExecutionComponent parity", () => {
 		);
 		const lines = renderedLines(component);
 		expect(lines[0]).toBe("◌ write");
-		expect(lines[1]).toBe("└");
-		expect(lines.join("\n")).not.toContain("one");
-		expect(lines.join("\n")).not.toContain("two");
+		expect(lines[1]).toContain("└ write README.md");
+		expect(lines.join("\n")).toContain("one");
+		expect(lines.join("\n")).toContain("two");
+	});
+
+	test("keeps write call preview when the successful result is empty", () => {
+		const component = new ToolExecutionComponent(
+			"write",
+			"tool-7b",
+			{ path: "README.md", content: "one\ntwo\n" },
+			{},
+			createWriteToolDefinition(process.cwd()),
+			createFakeTui(),
+			process.cwd(),
+		);
+		component.updateResult(
+			{
+				content: [{ type: "text", text: "Successfully wrote 8 bytes to README.md" }],
+				details: undefined,
+				isError: false,
+			},
+			false,
+		);
+		const lines = renderedLines(component);
+		expect(lines[0]).toBe("● write");
+		expect(lines[1]).toContain("└ write README.md");
+		expect(lines.join("\n")).toContain("one");
+		expect(lines.join("\n")).toContain("two");
+		expect(lines.join("\n")).not.toContain("Successfully wrote");
 	});
 
 	test("trims trailing blank display lines from read results", () => {

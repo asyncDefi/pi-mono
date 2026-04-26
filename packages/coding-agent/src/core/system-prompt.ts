@@ -159,7 +159,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 		"Load/unload skills with skills_context (actions load, unload, list_active, list_discovered or list, history); use list_discovered or list to answer which skills exist without reading project config files",
 	);
 	addGuideline(
-		"Load/unload MCP servers with mcp_context (actions load, unload, list_active, list_discovered or list, history); MCP tools are available only while their server is loaded",
+		"Load/unload MCP servers with mcp_context (actions load, unload, list_active, list_discovered or list, history); MCP tools are available only while their server is loaded; after a successful load, each MCP tool is exposed like built-in tools with names mcp__<server>__<tool> (see mcp_context list_active for exact names)",
 	);
 	addGuideline("Use dont_destroy_notes to maintain short durable notes across compaction (7 slots, 2000 chars total)");
 

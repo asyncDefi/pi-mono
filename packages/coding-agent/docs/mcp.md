@@ -47,3 +47,5 @@ Pi exposes MCP through the built-in `mcp_context` tool:
 - `history`: show recent load/unload events
 
 Only loaded MCP servers contribute tools to the model context. Unload unused servers to keep tool context small.
+
+Each loaded MCP tool is registered for the model under a stable name: `mcp__<server>__<tool>` with non-alphanumeric parts replaced by underscores (for example `mcp__errors_log__find_error`). Use `mcp_context` with action `list_active` to print the exact tool names currently available.

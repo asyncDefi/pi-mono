@@ -1,7 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, extname, isAbsolute, resolve } from "node:path";
 import { createInterface, type Interface } from "node:readline";
 import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
 import { type TSchema, Type } from "@sinclair/typebox";
@@ -17,6 +17,8 @@ const PYTHON_STDIO_ENV_DEFAULTS = {
 	PYTHONUTF8: "1",
 	PYTHONIOENCODING: "utf-8",
 } as const;
+const DEFAULT_WINDOWS_PATHEXT = [".COM", ".EXE", ".BAT", ".CMD"];
+const WINDOWS_CMD_EXTENSIONS = new Set([".bat", ".cmd"]);
 
 type JsonObject = Record<string, unknown>;
 type JsonRpcId = number | string;
@@ -65,6 +67,18 @@ export interface McpClient {
 }
 
 export type McpClientFactory = (server: McpServer, cwd: string) => McpClient;
+
+export interface StdioMcpSpawnCommand {
+	command: string;
+	args: string[];
+}
+
+interface StdioMcpSpawnCommandOptions {
+	cwd: string;
+	env?: NodeJS.ProcessEnv;
+	fileExists?: (path: string) => boolean;
+	platform?: NodeJS.Platform;
+}
 
 export interface LoadedMcpServer {
 	server: McpServer;
@@ -152,6 +166,97 @@ export function createStdioMcpProcessEnv(
 		env[key] = PYTHON_STDIO_ENV_DEFAULTS[key as keyof typeof PYTHON_STDIO_ENV_DEFAULTS];
 	}
 	return env;
+}
+
+function getEnvValue(env: NodeJS.ProcessEnv, key: string): string | undefined {
+	const normalized = key.toLowerCase();
+	for (const [envKey, value] of Object.entries(env)) {
+		if (envKey.toLowerCase() === normalized) {
+			return value;
+		}
+	}
+	return undefined;
+}
+
+function hasPathSeparator(command: string): boolean {
+	return command.includes("/") || command.includes("\\");
+}
+
+function windowsPathExtensions(env: NodeJS.ProcessEnv): string[] {
+	const raw = getEnvValue(env, "PATHEXT");
+	if (!raw) return DEFAULT_WINDOWS_PATHEXT;
+	const extensions = raw
+		.split(";")
+		.map((part) => part.trim())
+		.filter((part) => part.length > 0)
+		.map((part) => (part.startsWith(".") ? part : `.${part}`));
+	return extensions.length > 0 ? extensions : DEFAULT_WINDOWS_PATHEXT;
+}
+
+function windowsPathDirs(env: NodeJS.ProcessEnv, cwd: string): string[] {
+	const raw = getEnvValue(env, "PATH");
+	if (!raw) return [cwd];
+	const dirs = raw.split(";").map((part) => part.trim() || cwd);
+	return dirs.length > 0 ? dirs : [cwd];
+}
+
+function findWindowsCommand(command: string, cwd: string, env: NodeJS.ProcessEnv): string | undefined {
+	const fileExists = existsSync;
+	return findWindowsCommandWith(command, cwd, env, fileExists);
+}
+
+function findWindowsCommandWith(
+	command: string,
+	cwd: string,
+	env: NodeJS.ProcessEnv,
+	fileExists: (path: string) => boolean,
+): string | undefined {
+	const hasExtension = extname(command).length > 0;
+	const extensions = windowsPathExtensions(env);
+	const candidatesFor = (base: string): string[] => {
+		if (hasExtension) return [base];
+		return [...extensions.map((extension) => `${base}${extension}`), base];
+	};
+
+	if (hasPathSeparator(command)) {
+		const base = isAbsolute(command) ? command : resolve(cwd, command);
+		return candidatesFor(base).find(fileExists);
+	}
+
+	for (const dir of windowsPathDirs(env, cwd)) {
+		const base = resolve(dir, command);
+		const found = candidatesFor(base).find(fileExists);
+		if (found) return found;
+	}
+	return undefined;
+}
+
+function isWindowsCommandScript(command: string): boolean {
+	return WINDOWS_CMD_EXTENSIONS.has(extname(command).toLowerCase());
+}
+
+export function resolveStdioMcpSpawnCommand(
+	config: McpStdioConfig,
+	options: StdioMcpSpawnCommandOptions,
+): StdioMcpSpawnCommand {
+	const platform = options.platform ?? process.platform;
+	if (platform !== "win32") {
+		return { command: config.command, args: config.args };
+	}
+
+	const env = options.env ?? process.env;
+	const resolved = options.fileExists
+		? findWindowsCommandWith(config.command, options.cwd, env, options.fileExists)
+		: findWindowsCommand(config.command, options.cwd, env);
+	const command = resolved ?? config.command;
+	if (!isWindowsCommandScript(command)) {
+		return { command, args: config.args };
+	}
+
+	return {
+		command: getEnvValue(env, "ComSpec") ?? "cmd.exe",
+		args: ["/d", "/c", command, ...config.args],
+	};
 }
 
 function resolveConfigCwd(rawCwd: string | undefined, baseDir: string): string | undefined {
@@ -357,10 +462,18 @@ class StdioMcpClient implements McpClient {
 			throw new Error("internal error: stdio client requires stdio config");
 		}
 
-		const proc = spawn(config.command, config.args, {
+		const env = createStdioMcpProcessEnv(config);
+		const spawnCommand = resolveStdioMcpSpawnCommand(config, {
 			cwd: config.cwd ?? this.cwd,
-			env: createStdioMcpProcessEnv(config),
-			shell: process.platform === "win32",
+			env,
+			platform: process.platform,
+		});
+		// Avoid shell: true on Windows: cmd.exe may emit stderr in the console OEM
+		// code page, which decodes poorly as UTF-8 in Node and obscures real errors.
+		const proc = spawn(spawnCommand.command, spawnCommand.args, {
+			cwd: config.cwd ?? this.cwd,
+			env,
+			shell: false,
 			stdio: ["pipe", "pipe", "pipe"],
 		});
 

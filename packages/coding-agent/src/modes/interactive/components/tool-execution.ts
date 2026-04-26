@@ -10,6 +10,8 @@ export interface ToolExecutionOptions {
 	imageWidthCells?: number;
 }
 
+const TOOL_ARGS_PREVIEW_MAX_LENGTH = 120;
+
 class PrefixedResultComponent implements Component {
 	private inner: Component;
 
@@ -155,8 +157,41 @@ export class ToolExecutionComponent extends Container {
 		};
 	}
 
-	private createCallFallback(): Component {
-		return new Text(theme.fg("toolTitle", theme.bold(this.toolName)), 0, 0);
+	private formatArgsPreview(): string | undefined {
+		if (this.args === undefined || this.args === null) {
+			return undefined;
+		}
+		if (
+			typeof this.args === "object" &&
+			!Array.isArray(this.args) &&
+			Object.keys(this.args as Record<string, unknown>).length === 0
+		) {
+			return undefined;
+		}
+
+		let preview: string;
+		try {
+			preview = JSON.stringify(this.args);
+		} catch {
+			preview = String(this.args);
+		}
+		if (!preview || preview === "{}") {
+			return undefined;
+		}
+		if (preview.length <= TOOL_ARGS_PREVIEW_MAX_LENGTH) {
+			return preview;
+		}
+		return `${preview.slice(0, TOOL_ARGS_PREVIEW_MAX_LENGTH - 3)}...`;
+	}
+
+	private createCallFallback(includeToolName = true): Component {
+		const argsPreview = this.formatArgsPreview();
+		const toolName = theme.fg("toolTitle", theme.bold(this.toolName));
+		if (!argsPreview) {
+			return new Text(includeToolName ? toolName : "", 0, 0);
+		}
+		const preview = theme.fg("dim", argsPreview);
+		return new Text(includeToolName ? `${toolName} ${preview}` : preview, 0, 0);
 	}
 
 	private updateHeader(): void {
@@ -174,8 +209,23 @@ export class ToolExecutionComponent extends Container {
 		return new Text(theme.fg("toolOutput", output), 0, 0);
 	}
 
+	private isComponentEmpty(component: Component): boolean {
+		if (component instanceof Container || component instanceof Box) {
+			return component.children.length === 0 || component.children.every((child) => this.isComponentEmpty(child));
+		}
+		return component.render(1).length === 0;
+	}
+
 	private asPrefixedResult(component: Component): Component {
 		return new PrefixedResultComponent(component);
+	}
+
+	private addPrefixedResult(container: Container | Box, component: Component | undefined): boolean {
+		if (!component || this.isComponentEmpty(component)) {
+			return false;
+		}
+		container.addChild(this.asPrefixedResult(component));
+		return true;
 	}
 
 	updateArgs(args: any): void {
@@ -271,6 +321,7 @@ export class ToolExecutionComponent extends Container {
 		this.updateHeader();
 		if (this.hasRendererDefinition()) {
 			const renderContainer = this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox;
+			let callPreviewComponent: Component | undefined;
 			if (renderContainer instanceof Box) {
 				renderContainer.setBgFn(bgFn);
 			}
@@ -281,34 +332,42 @@ export class ToolExecutionComponent extends Container {
 				renderContainer.addChild(this.headerText);
 				hasContent = true;
 
-				// Keep legacy behavior: run the call renderer to allow tools to initialize shared render state,
-				// but do not display its output in the default shell.
 				const callRenderer = this.getCallRenderer();
 				if (callRenderer) {
 					try {
 						const component = callRenderer(this.args, theme, this.getRenderContext(this.callRendererComponent));
 						this.callRendererComponent = component;
+						callPreviewComponent = component;
 					} catch {
 						this.callRendererComponent = undefined;
 					}
 				} else {
 					this.callRendererComponent = undefined;
+					callPreviewComponent = this.createCallFallback(false);
 				}
 			} else {
 				const callRenderer = this.getCallRenderer();
 				if (!callRenderer) {
-					renderContainer.addChild(this.createCallFallback());
-					hasContent = true;
+					const component = this.createCallFallback();
+					if (!this.isComponentEmpty(component)) {
+						renderContainer.addChild(component);
+						hasContent = true;
+					}
 				} else {
 					try {
 						const component = callRenderer(this.args, theme, this.getRenderContext(this.callRendererComponent));
 						this.callRendererComponent = component;
-						renderContainer.addChild(component);
-						hasContent = true;
+						if (!this.isComponentEmpty(component)) {
+							renderContainer.addChild(component);
+							hasContent = true;
+						}
 					} catch {
 						this.callRendererComponent = undefined;
-						renderContainer.addChild(this.createCallFallback());
-						hasContent = true;
+						const component = this.createCallFallback();
+						if (!this.isComponentEmpty(component)) {
+							renderContainer.addChild(component);
+							hasContent = true;
+						}
 					}
 				}
 			}
@@ -317,8 +376,12 @@ export class ToolExecutionComponent extends Container {
 				const resultRenderer = this.getResultRenderer();
 				if (!resultRenderer) {
 					const component = this.createResultFallback();
-					if (component) {
-						renderContainer.addChild(this.asPrefixedResult(component));
+					if (this.addPrefixedResult(renderContainer, component)) {
+						hasContent = true;
+					} else if (
+						this.getRenderShell() !== "self" &&
+						this.addPrefixedResult(renderContainer, callPreviewComponent)
+					) {
 						hasContent = true;
 					}
 				} else {
@@ -330,21 +393,35 @@ export class ToolExecutionComponent extends Container {
 							this.getRenderContext(this.resultRendererComponent),
 						);
 						this.resultRendererComponent = component;
-						renderContainer.addChild(this.asPrefixedResult(component));
-						hasContent = true;
+						if (this.addPrefixedResult(renderContainer, component)) {
+							hasContent = true;
+						} else if (
+							this.getRenderShell() !== "self" &&
+							this.addPrefixedResult(renderContainer, callPreviewComponent)
+						) {
+							hasContent = true;
+						}
 					} catch {
 						this.resultRendererComponent = undefined;
 						const component = this.createResultFallback();
-						if (component) {
-							renderContainer.addChild(this.asPrefixedResult(component));
+						if (this.addPrefixedResult(renderContainer, component)) {
+							hasContent = true;
+						} else if (
+							this.getRenderShell() !== "self" &&
+							this.addPrefixedResult(renderContainer, callPreviewComponent)
+						) {
 							hasContent = true;
 						}
 					}
 				}
 			} else if (this.getRenderShell() !== "self") {
-				// No result yet: show the bracket line alone.
-				renderContainer.addChild(this.bracketText);
-				hasContent = true;
+				if (this.addPrefixedResult(renderContainer, callPreviewComponent)) {
+					hasContent = true;
+				} else {
+					// No result yet: show the bracket line alone.
+					renderContainer.addChild(this.bracketText);
+					hasContent = true;
+				}
 			}
 		} else {
 			this.contentText.setCustomBgFn(bgFn);
@@ -401,7 +478,9 @@ export class ToolExecutionComponent extends Container {
 		const icon = this.isPartial ? "◌" : "●";
 		const output = this.getTextOutput();
 		if (!output) {
-			return `${theme.fg("toolTitle", theme.bold(`${icon} ${this.toolName}`))}\n${theme.fg("muted", "└")}`;
+			const argsPreview = this.formatArgsPreview();
+			const bracket = argsPreview ? `└ ${argsPreview}` : "└";
+			return `${theme.fg("toolTitle", theme.bold(`${icon} ${this.toolName}`))}\n${theme.fg("muted", bracket)}`;
 		}
 		const lines = output.split("\n");
 		const first = lines[0] ?? "";

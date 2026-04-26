@@ -15,6 +15,8 @@
 
 ### Fixed
 
+- Clarified in the default system prompt and `docs/mcp.md` that loaded MCP tools appear as `mcp__<server>__<tool>` names and that `mcp_context list_active` lists them.
+- Resolve Windows `.cmd`/`.bat` MCP command shims explicitly while keeping direct stdio MCP spawns shell-free, so npm MCP binaries work without corrupting UTF-8 stderr for Python/exe servers.
 - Improved MCP stdio diagnostics by showing `cwd` and env/header key names in `mcp_context list`, and defaulting Python MCP servers to UTF-8 stdio env when unset.
 - Removed the interactive startup new-version notification banner.
 - Fixed `ctx.getSystemPrompt()` inside `before_agent_start` to reflect chained system-prompt changes made by earlier `before_agent_start` handlers, and clarified the extension docs around provider-payload rewrites and what `ctx.getSystemPrompt()` does and does not report ([#3539](https://github.com/badlogic/pi-mono/issues/3539))

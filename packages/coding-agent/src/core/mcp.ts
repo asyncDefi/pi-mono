@@ -60,9 +60,9 @@ export interface McpToolCallResult {
 }
 
 export interface McpClient {
-	connect(): Promise<void>;
-	listTools(): Promise<McpTool[]>;
-	callTool(name: string, args: JsonObject): Promise<McpToolCallResult>;
+	connect(signal?: AbortSignal): Promise<void>;
+	listTools(signal?: AbortSignal): Promise<McpTool[]>;
+	callTool(name: string, args: JsonObject, signal?: AbortSignal): Promise<McpToolCallResult>;
 	close(): Promise<void>;
 }
 
@@ -100,6 +100,11 @@ export interface McpToolDetails {
 
 export interface LoadMcpServersOptions {
 	cwd: string;
+}
+
+export interface LoadMcpServersFromConfigPathOptions {
+	configPath: string;
+	sourceInfo?: SourceInfo;
 }
 
 export interface LoadMcpServersResult {
@@ -304,8 +309,8 @@ function serverDescription(name: string, config: McpServerConfig, rawDescription
 	return command ? `MCP stdio server: ${command}` : `MCP server ${name}`;
 }
 
-export function loadMcpServers(options: LoadMcpServersOptions): LoadMcpServersResult {
-	const configPath = resolve(options.cwd, CONFIG_DIR_NAME, "mcp.json");
+export function loadMcpServersFromConfigPath(options: LoadMcpServersFromConfigPathOptions): LoadMcpServersResult {
+	const configPath = resolve(options.configPath);
 	const diagnostics: ResourceDiagnostic[] = [];
 	const servers: McpServer[] = [];
 
@@ -365,15 +370,23 @@ export function loadMcpServers(options: LoadMcpServersOptions): LoadMcpServersRe
 			description: serverDescription(name, config, asString(rawServer.description)),
 			configPath,
 			config,
-			sourceInfo: createSyntheticSourceInfo(configPath, {
-				source: "local",
-				scope: "project",
-				baseDir,
-			}),
+			sourceInfo:
+				options.sourceInfo ??
+				createSyntheticSourceInfo(configPath, {
+					source: "local",
+					scope: "project",
+					baseDir,
+				}),
 		});
 	}
 
 	return { servers, diagnostics };
+}
+
+export function loadMcpServers(options: LoadMcpServersOptions): LoadMcpServersResult {
+	return loadMcpServersFromConfigPath({
+		configPath: resolve(options.cwd, CONFIG_DIR_NAME, "mcp.json"),
+	});
 }
 
 function jsonRpcErrorMessage(error: unknown): string {
@@ -391,6 +404,16 @@ function validateJsonRpcResponse(value: unknown): { result: unknown } {
 		throw new Error(jsonRpcErrorMessage(value.error));
 	}
 	return { result: value.result };
+}
+
+function operationAbortedError(): Error {
+	return new Error("Operation aborted");
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+	if (signal?.aborted) {
+		throw operationAbortedError();
+	}
 }
 
 function requestTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
@@ -416,29 +439,35 @@ class StdioMcpClient implements McpClient {
 		private cwd: string,
 	) {}
 
-	async connect(): Promise<void> {
+	async connect(signal?: AbortSignal): Promise<void> {
 		if (this.initialized) return;
-		await this.request("initialize", {
-			protocolVersion: MCP_PROTOCOL_VERSION,
-			capabilities: {},
-			clientInfo: { name: "pi", version: VERSION },
-		});
+		throwIfAborted(signal);
+		await this.request(
+			"initialize",
+			{
+				protocolVersion: MCP_PROTOCOL_VERSION,
+				capabilities: {},
+				clientInfo: { name: "pi", version: VERSION },
+			},
+			signal,
+		);
+		throwIfAborted(signal);
 		this.notify("notifications/initialized", {});
 		this.initialized = true;
 	}
 
-	async listTools(): Promise<McpTool[]> {
-		await this.connect();
-		const result = await this.request("tools/list", {});
+	async listTools(signal?: AbortSignal): Promise<McpTool[]> {
+		await this.connect(signal);
+		const result = await this.request("tools/list", {}, signal);
 		if (!isRecord(result) || !Array.isArray(result.tools)) {
 			return [];
 		}
 		return result.tools.filter(isMcpTool);
 	}
 
-	async callTool(name: string, args: JsonObject): Promise<McpToolCallResult> {
-		await this.connect();
-		const result = await this.request("tools/call", { name, arguments: args });
+	async callTool(name: string, args: JsonObject, signal?: AbortSignal): Promise<McpToolCallResult> {
+		await this.connect(signal);
+		const result = await this.request("tools/call", { name, arguments: args }, signal);
 		return isRecord(result) ? (result as McpToolCallResult) : { content: [{ type: "text", text: String(result) }] };
 	}
 
@@ -524,10 +553,20 @@ class StdioMcpClient implements McpClient {
 		}
 	}
 
-	private request(method: string, params: JsonObject): Promise<unknown> {
+	private request(method: string, params: JsonObject, signal?: AbortSignal): Promise<unknown> {
+		throwIfAborted(signal);
 		const proc = this.ensureProcess();
 		const id = this.nextId++;
+		let cleanupAbort = () => {};
 		const promise = new Promise<unknown>((resolve, reject) => {
+			const rejectAborted = () => {
+				this.pending.delete(id);
+				reject(operationAbortedError());
+			};
+			if (signal) {
+				signal.addEventListener("abort", rejectAborted, { once: true });
+				cleanupAbort = () => signal.removeEventListener("abort", rejectAborted);
+			}
 			this.pending.set(id, { resolve, reject });
 			proc.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`, (error) => {
 				if (!error) return;
@@ -535,7 +574,10 @@ class StdioMcpClient implements McpClient {
 				reject(error);
 			});
 		});
-		return requestTimeout(promise, DEFAULT_REQUEST_TIMEOUT_MS, `MCP ${this.server.name}.${method}`);
+		return requestTimeout(promise, DEFAULT_REQUEST_TIMEOUT_MS, `MCP ${this.server.name}.${method}`).finally(() => {
+			this.pending.delete(id);
+			cleanupAbort();
+		});
 	}
 
 	private notify(method: string, params: JsonObject): void {
@@ -586,29 +628,35 @@ class HttpMcpClient implements McpClient {
 
 	constructor(private server: McpServer) {}
 
-	async connect(): Promise<void> {
+	async connect(signal?: AbortSignal): Promise<void> {
 		if (this.initialized) return;
-		await this.request("initialize", {
-			protocolVersion: MCP_PROTOCOL_VERSION,
-			capabilities: {},
-			clientInfo: { name: "pi", version: VERSION },
-		});
-		await this.notification("notifications/initialized", {});
+		throwIfAborted(signal);
+		await this.request(
+			"initialize",
+			{
+				protocolVersion: MCP_PROTOCOL_VERSION,
+				capabilities: {},
+				clientInfo: { name: "pi", version: VERSION },
+			},
+			signal,
+		);
+		throwIfAborted(signal);
+		await this.notification("notifications/initialized", {}, signal);
 		this.initialized = true;
 	}
 
-	async listTools(): Promise<McpTool[]> {
-		await this.connect();
-		const result = await this.request("tools/list", {});
+	async listTools(signal?: AbortSignal): Promise<McpTool[]> {
+		await this.connect(signal);
+		const result = await this.request("tools/list", {}, signal);
 		if (!isRecord(result) || !Array.isArray(result.tools)) {
 			return [];
 		}
 		return result.tools.filter(isMcpTool);
 	}
 
-	async callTool(name: string, args: JsonObject): Promise<McpToolCallResult> {
-		await this.connect();
-		const result = await this.request("tools/call", { name, arguments: args });
+	async callTool(name: string, args: JsonObject, signal?: AbortSignal): Promise<McpToolCallResult> {
+		await this.connect(signal);
+		const result = await this.request("tools/call", { name, arguments: args }, signal);
 		return isRecord(result) ? (result as McpToolCallResult) : { content: [{ type: "text", text: String(result) }] };
 	}
 
@@ -630,17 +678,18 @@ class HttpMcpClient implements McpClient {
 		this.sessionId = undefined;
 	}
 
-	private async request(method: string, params: JsonObject): Promise<unknown> {
+	private async request(method: string, params: JsonObject, signal?: AbortSignal): Promise<unknown> {
 		const id = this.nextId++;
-		const response = await this.post({ jsonrpc: "2.0", id, method, params });
+		const response = await this.post({ jsonrpc: "2.0", id, method, params }, signal);
 		return validateJsonRpcResponse(response).result;
 	}
 
-	private async notification(method: string, params: JsonObject): Promise<void> {
-		await this.post({ jsonrpc: "2.0", method, params });
+	private async notification(method: string, params: JsonObject, signal?: AbortSignal): Promise<void> {
+		await this.post({ jsonrpc: "2.0", method, params }, signal);
 	}
 
-	private async post(payload: JsonObject): Promise<unknown> {
+	private async post(payload: JsonObject, signal?: AbortSignal): Promise<unknown> {
+		throwIfAborted(signal);
 		const config = this.server.config;
 		if (config.type !== "http") {
 			throw new Error("internal error: HTTP client requires HTTP config");
@@ -659,6 +708,7 @@ class HttpMcpClient implements McpClient {
 			method: "POST",
 			headers,
 			body: JSON.stringify(payload),
+			signal,
 		});
 		this.sessionId = response.headers.get("mcp-session-id") ?? this.sessionId;
 
@@ -765,14 +815,10 @@ export function createMcpToolDefinition(loaded: LoadedMcpServer, loadedTool: Loa
 		promptSnippet: description,
 		parameters: normalizeInputSchema(tool.inputSchema),
 		async execute(_toolCallId, params: unknown, signal) {
-			if (signal?.aborted) {
-				throw new Error("Operation aborted");
-			}
+			throwIfAborted(signal);
 			const args = isRecord(params) ? params : {};
-			const result = await client.callTool(tool.name, args);
-			if (signal?.aborted) {
-				throw new Error("Operation aborted");
-			}
+			const result = await client.callTool(tool.name, args, signal);
+			throwIfAborted(signal);
 			const content = mcpContentToAgentContent(result.content);
 			const details: McpToolDetails = {
 				server: server.name,

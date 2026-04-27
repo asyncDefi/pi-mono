@@ -29,6 +29,29 @@ import { getDocsPath } from "../config.js";
 import { theme } from "../modes/interactive/theme/theme.js";
 import { stripFrontmatter } from "../utils/frontmatter.js";
 import { sleep } from "../utils/sleep.js";
+import {
+	type ArchitectureContainer,
+	type ArchitectureGraph,
+	type ArchitectureRelation,
+	type ArchitectureScript,
+	createEmptyArchitectureGraph,
+	findArchitectureNode,
+	formatArchitectureContextForPrompt,
+	formatArchitectureItem,
+	formatArchitectureSystemList,
+	getArchitectureFilePath,
+	getArchitectureStatus,
+	readArchitectureGraph,
+	readArchitectureGraphOrEmpty,
+	readArchitectureGraphSync,
+	removeArchitectureItem,
+	upsertArchitectureRelation,
+	upsertArchitectureScript,
+	upsertArchitectureSubsystem,
+	upsertArchitectureSystem,
+	validateArchitectureGraph,
+	writeArchitectureGraph,
+} from "./architecture.js";
 import { type BashResult, executeBashWithOperations } from "./bash-executor.js";
 import {
 	type CompactionResult,
@@ -69,6 +92,7 @@ import {
 	wrapRegisteredTools,
 } from "./extensions/index.js";
 import { emitSessionShutdownEvent } from "./extensions/runner.js";
+import { discoverLlmFunctions, formatLlmFunctionsForPrompt } from "./llm-functions-config.js";
 import {
 	createMcpClient,
 	createMcpToolDefinition,
@@ -92,6 +116,7 @@ import type { SlashCommandInfo } from "./slash-commands.js";
 import { createSyntheticSourceInfo, type SourceInfo } from "./source-info.js";
 import { type BuildSystemPromptOptions, buildSystemPrompt } from "./system-prompt.js";
 import { type BashOperations, createLocalBashOperations } from "./tools/bash.js";
+import { withFileMutationQueue } from "./tools/file-mutation-queue.js";
 import { createAllToolDefinitions } from "./tools/index.js";
 import { createToolDefinitionFromAgentTool } from "./tools/tool-definition-wrapper.js";
 
@@ -162,12 +187,14 @@ export interface AgentSessionConfig {
 	customTools?: ToolDefinition[];
 	/** Model registry for API key resolution and model discovery */
 	modelRegistry: ModelRegistry;
-	/** Initial active built-in tool names. Default matches SDK: read, bash, edit, write, skills_context, mcp_context, dont_destroy_notes */
+	/** Initial active built-in tool names. Default matches SDK: read, bash, edit, write, skills_context, mcp_context, architecture_context, llm_function, dont_destroy_notes */
 	initialActiveToolNames?: string[];
 	/** Factory for MCP clients. Tests can override this to avoid spawning real servers. */
 	mcpClientFactory?: McpClientFactory;
 	/** Optional allowlist of tool names. When provided, only these tool names are exposed. */
 	allowedToolNames?: string[];
+	/** Include discovered .pi/llm-functions in the system prompt. Defaults to true for main sessions. */
+	includeLlmFunctionsContext?: boolean;
 	/**
 	 * Override base tools (useful for custom runtimes).
 	 *
@@ -332,6 +359,7 @@ export class AgentSession {
 	private _extensionRunnerRef?: { current?: ExtensionRunner };
 	private _initialActiveToolNames?: string[];
 	private _allowedToolNames?: Set<string>;
+	private _includeLlmFunctionsContext: boolean;
 	private _baseToolsOverride?: Record<string, AgentTool>;
 	private _sessionStartEvent: SessionStartEvent;
 	private _extensionUIContext?: ExtensionUIContext;
@@ -374,6 +402,13 @@ export class AgentSession {
 	private _mcpContextHistory: Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> = [];
 
 	// =========================================================================
+	// Architecture context lifecycle (active subset + short history)
+	// =========================================================================
+	private static readonly ARCHITECTURE_CONTEXT_CUSTOM_TYPE = "pi.architecture_context";
+	private _activeArchitectureIds: Set<string> = new Set();
+	private _architectureContextHistory: Array<{ timestamp: string; action: "loaded" | "unloaded"; id: string }> = [];
+
+	// =========================================================================
 	// Dont-destroy notes (persisted, never compacted)
 	// =========================================================================
 	private static readonly DONT_DESTROY_CUSTOM_TYPE = "pi.dont_destroy";
@@ -394,6 +429,7 @@ export class AgentSession {
 		this._extensionRunnerRef = config.extensionRunnerRef;
 		this._initialActiveToolNames = config.initialActiveToolNames;
 		this._allowedToolNames = config.allowedToolNames ? new Set(config.allowedToolNames) : undefined;
+		this._includeLlmFunctionsContext = config.includeLlmFunctionsContext ?? true;
 		this._baseToolsOverride = config.baseToolsOverride;
 		this._sessionStartEvent = config.sessionStartEvent ?? { type: "session_start", reason: "startup" };
 
@@ -404,6 +440,7 @@ export class AgentSession {
 
 		this._restoreSkillsContextFromSession();
 		this._restoreMcpContextFromSession();
+		this._restoreArchitectureContextFromSession();
 		this._restoreDontDestroyNotesFromSession();
 
 		this._buildRuntime({
@@ -804,6 +841,197 @@ export class AgentSession {
 
 	private _getMcpContextHistory(): Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> {
 		return [...this._mcpContextHistory];
+	}
+
+	private _restoreArchitectureContextFromSession(): void {
+		const entries = this.sessionManager.getEntries();
+		const history: Array<{ timestamp: string; action: "loaded" | "unloaded"; id: string }> = [];
+		const active = new Set<string>();
+
+		for (const entry of entries) {
+			if (entry.type !== "custom") continue;
+			if (entry.customType !== AgentSession.ARCHITECTURE_CONTEXT_CUSTOM_TYPE) continue;
+			const data = entry.data as { action?: unknown; id?: unknown } | undefined;
+			const action = data?.action;
+			const id = data?.id;
+			if ((action !== "loaded" && action !== "unloaded") || typeof id !== "string" || id.trim() === "") {
+				continue;
+			}
+			const normalizedId = id.trim();
+			if (action === "loaded") {
+				active.add(normalizedId);
+			} else {
+				active.delete(normalizedId);
+			}
+			history.push({ timestamp: entry.timestamp, action, id: normalizedId });
+		}
+
+		this._activeArchitectureIds = active;
+		this._architectureContextHistory = history.slice(-5);
+	}
+
+	private _recordArchitectureContextEvent(action: "loaded" | "unloaded", id: string): void {
+		const timestamp = new Date().toISOString();
+		this._architectureContextHistory = [...this._architectureContextHistory, { timestamp, action, id }].slice(-5);
+		this.sessionManager.appendCustomEntry(AgentSession.ARCHITECTURE_CONTEXT_CUSTOM_TYPE, { action, id });
+	}
+
+	private async _withArchitectureGraphMutation<T>(
+		fn: (graph: ArchitectureGraph) => Promise<{ graph: ArchitectureGraph; result: T }>,
+	): Promise<T> {
+		const filePath = getArchitectureFilePath(this._cwd);
+		return withFileMutationQueue(filePath, async () => {
+			const graph = await readArchitectureGraphOrEmpty(this._cwd);
+			const { graph: nextGraph, result } = await fn(graph);
+			await writeArchitectureGraph(this._cwd, nextGraph);
+			this._syncActiveArchitectureWithGraph(nextGraph);
+			this._baseSystemPrompt = this._rebuildSystemPrompt(this.getActiveToolNames());
+			this.agent.state.systemPrompt = this._baseSystemPrompt;
+			return result;
+		});
+	}
+
+	private _syncActiveArchitectureWithGraph(graph: ArchitectureGraph): void {
+		for (const id of Array.from(this._activeArchitectureIds.values())) {
+			if (!findArchitectureNode(graph, id)) {
+				this._activeArchitectureIds.delete(id);
+				this._recordArchitectureContextEvent("unloaded", id);
+			}
+		}
+	}
+
+	private async _initArchitectureContext(): Promise<{ created: boolean; path: string }> {
+		const filePath = getArchitectureFilePath(this._cwd);
+		if (existsSync(filePath)) {
+			await readArchitectureGraph(this._cwd);
+			return { created: false, path: filePath };
+		}
+		return withFileMutationQueue(filePath, async () => {
+			if (existsSync(filePath)) {
+				await readArchitectureGraph(this._cwd);
+				return { created: false, path: filePath };
+			}
+			await writeArchitectureGraph(this._cwd, createEmptyArchitectureGraph());
+			this._baseSystemPrompt = this._rebuildSystemPrompt(this.getActiveToolNames());
+			this.agent.state.systemPrompt = this._baseSystemPrompt;
+			return { created: true, path: filePath };
+		});
+	}
+
+	private async _getArchitectureStatus() {
+		return getArchitectureStatus(this._cwd);
+	}
+
+	private async _validateArchitectureContext(): Promise<{ valid: boolean; errors: string[] }> {
+		const graph = await readArchitectureGraph(this._cwd);
+		if (!graph) {
+			return { valid: false, errors: ["architecture.json is missing"] };
+		}
+		const validation = validateArchitectureGraph(graph);
+		return validation.valid ? { valid: true, errors: [] } : { valid: false, errors: validation.errors };
+	}
+
+	private async _listArchitectureSystems(): Promise<string[]> {
+		return formatArchitectureSystemList((await readArchitectureGraph(this._cwd)) ?? createEmptyArchitectureGraph());
+	}
+
+	private async _getArchitectureContext(id: string): Promise<string> {
+		const normalized = id.trim();
+		if (!normalized) {
+			throw new Error("Architecture id is required");
+		}
+		const graph = await readArchitectureGraph(this._cwd);
+		if (!graph) {
+			throw new Error("architecture.json is missing. Use architecture_context init first.");
+		}
+		return formatArchitectureItem(graph, normalized);
+	}
+
+	private async _loadArchitectureIntoContext(id: string): Promise<{ loaded: boolean; alreadyLoaded: boolean }> {
+		const normalized = id.trim();
+		if (!normalized) {
+			throw new Error("Architecture id is required");
+		}
+		const graph = await readArchitectureGraph(this._cwd);
+		if (!graph) {
+			throw new Error("architecture.json is missing. Use architecture_context init first.");
+		}
+		if (!findArchitectureNode(graph, normalized)) {
+			throw new Error(`Unknown architecture id: ${normalized}`);
+		}
+		if (this._activeArchitectureIds.has(normalized)) {
+			return { loaded: false, alreadyLoaded: true };
+		}
+		this._activeArchitectureIds.add(normalized);
+		this._recordArchitectureContextEvent("loaded", normalized);
+		this._baseSystemPrompt = this._rebuildSystemPrompt(this.getActiveToolNames());
+		this.agent.state.systemPrompt = this._baseSystemPrompt;
+		return { loaded: true, alreadyLoaded: false };
+	}
+
+	private async _unloadArchitectureFromContext(id: string): Promise<{ unloaded: boolean; wasLoaded: boolean }> {
+		const normalized = id.trim();
+		if (!normalized) {
+			throw new Error("Architecture id is required");
+		}
+		const wasLoaded = this._activeArchitectureIds.delete(normalized);
+		if (!wasLoaded) {
+			return { unloaded: false, wasLoaded: false };
+		}
+		this._recordArchitectureContextEvent("unloaded", normalized);
+		this._baseSystemPrompt = this._rebuildSystemPrompt(this.getActiveToolNames());
+		this.agent.state.systemPrompt = this._baseSystemPrompt;
+		return { unloaded: true, wasLoaded: true };
+	}
+
+	private _listActiveArchitecture(): string[] {
+		return Array.from(this._activeArchitectureIds.values()).sort((a, b) => a.localeCompare(b));
+	}
+
+	private _getArchitectureContextHistory(): Array<{ timestamp: string; action: "loaded" | "unloaded"; id: string }> {
+		return [...this._architectureContextHistory];
+	}
+
+	private async _upsertArchitectureSystem(system: ArchitectureContainer): Promise<void> {
+		await this._withArchitectureGraphMutation(async (graph) => ({
+			graph: upsertArchitectureSystem(graph, system),
+			result: undefined,
+		}));
+	}
+
+	private async _upsertArchitectureSubsystem(parentId: string, subsystem: ArchitectureContainer): Promise<void> {
+		await this._withArchitectureGraphMutation(async (graph) => ({
+			graph: upsertArchitectureSubsystem(graph, parentId, subsystem),
+			result: undefined,
+		}));
+	}
+
+	private async _upsertArchitectureScript(containerId: string, script: ArchitectureScript): Promise<void> {
+		await this._withArchitectureGraphMutation(async (graph) => ({
+			graph: upsertArchitectureScript(graph, containerId, script),
+			result: undefined,
+		}));
+	}
+
+	private async _upsertArchitectureRelation(relation: ArchitectureRelation): Promise<void> {
+		await this._withArchitectureGraphMutation(async (graph) => ({
+			graph: upsertArchitectureRelation(graph, relation),
+			result: undefined,
+		}));
+	}
+
+	private async _removeArchitectureItem(id: string): Promise<{ removed: boolean }> {
+		const normalized = id.trim();
+		if (!normalized) {
+			throw new Error("Architecture id is required");
+		}
+		return this._withArchitectureGraphMutation(async (graph) => {
+			const { graph: nextGraph, removed } = removeArchitectureItem(graph, normalized);
+			if (this._activeArchitectureIds.delete(normalized)) {
+				this._recordArchitectureContextEvent("unloaded", normalized);
+			}
+			return { graph: nextGraph, result: { removed } };
+		});
 	}
 
 	private async _ensureActiveMcpLoaded(): Promise<void> {
@@ -1253,7 +1481,7 @@ export class AgentSession {
 	}
 
 	/**
-	 * Canonical system prompt: tools, skills_context-loaded skills, dont_destroy notes, and project context.
+	 * Canonical system prompt: tools, skills_context-loaded skills, architecture_context, dont_destroy notes, and project context.
 	 * Same as {@link baseSystemPrompt}; always up to date when skills load/unload or notes change.
 	 */
 	get systemPrompt(): string {
@@ -1485,11 +1713,26 @@ export class AgentSession {
 		const loadedSkills = this._resourceLoader.getSkills().skills.filter((s) => this._activeSkillNames.has(s.name));
 		const loadedMcpServers = Array.from(this._loadedMcpServers.values());
 		const loadedContextFiles = this._resourceLoader.getAgentsFiles().agentsFiles;
+		let architectureContext: string | undefined;
+		try {
+			const architectureGraph = readArchitectureGraphSync(this._cwd);
+			architectureContext = architectureGraph
+				? formatArchitectureContextForPrompt(architectureGraph, this._listActiveArchitecture())
+				: undefined;
+		} catch {
+			architectureContext = undefined;
+		}
+		let llmFunctionsContext: string | undefined;
+		if (this._includeLlmFunctionsContext) {
+			llmFunctionsContext = formatLlmFunctionsForPrompt(discoverLlmFunctions(this._cwd));
+		}
 
 		this._baseSystemPromptOptions = {
 			cwd: this._cwd,
 			skills: loadedSkills,
 			mcpServers: loadedMcpServers,
+			architectureContext,
+			llmFunctionsContext,
 			contextFiles: loadedContextFiles,
 			customPrompt: loaderSystemPrompt,
 			appendSystemPrompt,
@@ -1499,6 +1742,11 @@ export class AgentSession {
 			promptGuidelines,
 		};
 		return buildSystemPrompt(this._baseSystemPromptOptions);
+	}
+
+	private _refreshSystemPromptFromActiveTools(): void {
+		this._baseSystemPrompt = this._rebuildSystemPrompt(this.getActiveToolNames());
+		this.agent.state.systemPrompt = this._baseSystemPrompt;
 	}
 
 	// =========================================================================
@@ -1574,6 +1822,7 @@ export class AgentSession {
 			}
 
 			await this._ensureActiveMcpLoaded();
+			this._refreshSystemPromptFromActiveTools();
 
 			// Flush any pending bash messages before the new prompt
 			this._flushPendingBashMessages();
@@ -2804,6 +3053,22 @@ export class AgentSession {
 				mcpContextListActive: () => this._listActiveMcp(),
 				mcpContextListDiscovered: () => this._listDiscoveredMcpLines(),
 				mcpContextHistory: () => this._getMcpContextHistory(),
+				architectureContextInit: () => this._initArchitectureContext(),
+				architectureContextStatus: () => this._getArchitectureStatus(),
+				architectureContextValidate: () => this._validateArchitectureContext(),
+				architectureContextListSystems: () => this._listArchitectureSystems(),
+				architectureContextGet: (id) => this._getArchitectureContext(id),
+				architectureContextLoad: (id) => this._loadArchitectureIntoContext(id),
+				architectureContextUnload: (id) => this._unloadArchitectureFromContext(id),
+				architectureContextListActive: () => this._listActiveArchitecture(),
+				architectureContextHistory: () => this._getArchitectureContextHistory(),
+				architectureContextUpsertSystem: (system) => this._upsertArchitectureSystem(system),
+				architectureContextUpsertSubsystem: (parentId, subsystem) =>
+					this._upsertArchitectureSubsystem(parentId, subsystem),
+				architectureContextUpsertScript: (containerId, script) =>
+					this._upsertArchitectureScript(containerId, script),
+				architectureContextUpsertRelation: (relation) => this._upsertArchitectureRelation(relation),
+				architectureContextRemove: (id) => this._removeArchitectureItem(id),
 				dontDestroyNotesSet: (slot, text) => this._setDontDestroyNote(slot, text),
 				dontDestroyNotesClear: (slot) => this._clearDontDestroyNote(slot),
 				dontDestroyNotesClearAll: () => this._clearAllDontDestroyNotes(),
@@ -2967,7 +3232,17 @@ export class AgentSession {
 
 		const defaultActiveToolNames = this._baseToolsOverride
 			? Object.keys(this._baseToolsOverride)
-			: ["read", "bash", "edit", "write", "skills_context", "mcp_context", "dont_destroy_notes"];
+			: [
+					"read",
+					"bash",
+					"edit",
+					"write",
+					"skills_context",
+					"mcp_context",
+					"architecture_context",
+					"llm_function",
+					"dont_destroy_notes",
+				];
 		const baseActiveToolNames = options.activeToolNames ?? defaultActiveToolNames;
 		this._refreshToolRegistry({
 			activeToolNames: baseActiveToolNames,

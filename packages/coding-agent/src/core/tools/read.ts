@@ -8,6 +8,11 @@ import { keyHint } from "../../modes/interactive/components/keybinding-hints.js"
 import { getLanguageFromPath, highlightCode } from "../../modes/interactive/theme/theme.js";
 import { formatDimensionNote, resizeImage } from "../../utils/image-resize.js";
 import { detectSupportedImageMimeTypeFromFile } from "../../utils/mime.js";
+import {
+	ARCHITECTURE_READ_MESSAGE,
+	assertPathAllowedForArchitectureFile,
+	isArchitectureFilePath,
+} from "../architecture.js";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
 import { resolveReadPath } from "./path-utils.js";
 import { assertPathAllowedForProjectConfig } from "./project-config-access.js";
@@ -140,6 +145,10 @@ export function createReadToolDefinition(
 			ctx?,
 		) {
 			const absolutePath = resolveReadPath(path, cwd);
+			if (isArchitectureFilePath(absolutePath, cwd)) {
+				return { content: [{ type: "text", text: ARCHITECTURE_READ_MESSAGE }], details: undefined };
+			}
+			assertPathAllowedForArchitectureFile(absolutePath, cwd, "read");
 			assertPathAllowedForProjectConfig(absolutePath, cwd);
 			return new Promise<{ content: (TextContent | ImageContent)[]; details: ReadToolDetails | undefined }>(
 				(resolve, reject) => {

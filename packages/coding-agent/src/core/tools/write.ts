@@ -5,6 +5,7 @@ import { mkdir as fsMkdir, writeFile as fsWriteFile } from "fs/promises";
 import { dirname } from "path";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
 import { getLanguageFromPath, highlightCode } from "../../modes/interactive/theme/theme.js";
+import { assertPathAllowedForArchitectureFile } from "../architecture.js";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
 import { withFileMutationQueue } from "./file-mutation-queue.js";
 import { resolveToCwd } from "./path-utils.js";
@@ -200,6 +201,7 @@ export function createWriteToolDefinition(
 			_ctx?,
 		) {
 			const absolutePath = resolveToCwd(path, cwd);
+			assertPathAllowedForArchitectureFile(absolutePath, cwd, "update");
 			assertPathAllowedForProjectConfig(absolutePath, cwd);
 			const dir = dirname(absolutePath);
 			return withFileMutationQueue(

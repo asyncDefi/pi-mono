@@ -4,6 +4,7 @@ import { type Static, Type } from "@sinclair/typebox";
 import { constants } from "fs";
 import { access as fsAccess, readFile as fsReadFile, writeFile as fsWriteFile } from "fs/promises";
 import { renderDiff } from "../../modes/interactive/components/diff.js";
+import { assertPathAllowedForArchitectureFile } from "../architecture.js";
 import type { ToolDefinition } from "../extensions/types.js";
 import {
 	applyEditsToNormalizedContent,
@@ -310,6 +311,7 @@ export function createEditToolDefinition(
 		async execute(_toolCallId, input: EditToolInput, signal?: AbortSignal, _onUpdate?, _ctx?) {
 			const { path, edits } = validateEditInput(input);
 			const absolutePath = resolveToCwd(path, cwd);
+			assertPathAllowedForArchitectureFile(absolutePath, cwd, "update");
 			assertPathAllowedForProjectConfig(absolutePath, cwd);
 
 			return withFileMutationQueue(

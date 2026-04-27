@@ -7,6 +7,7 @@ import { readFileSync, statSync } from "fs";
 import path from "path";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
 import { ensureTool } from "../../utils/tools-manager.js";
+import { assertPathAllowedForArchitectureFile, getRipgrepArchitectureExcludeGlobs } from "../architecture.js";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
 import { resolveToCwd } from "./path-utils.js";
 import { assertPathAllowedForProjectConfig, getRipgrepProjectConfigExcludeGlobs } from "./project-config-access.js";
@@ -169,14 +170,15 @@ export function createGrepToolDefinition(
 
 				(async () => {
 					try {
+						const searchPath = resolveToCwd(searchDir || ".", cwd);
+						assertPathAllowedForArchitectureFile(searchPath, cwd, "read");
+						assertPathAllowedForProjectConfig(searchPath, cwd);
 						const rgPath = await ensureTool("rg", true);
 						if (!rgPath) {
 							settle(() => reject(new Error("ripgrep (rg) is not available and could not be downloaded")));
 							return;
 						}
 
-						const searchPath = resolveToCwd(searchDir || ".", cwd);
-						assertPathAllowedForProjectConfig(searchPath, cwd);
 						const ops = customOps ?? defaultGrepOperations;
 						let isDirectory: boolean;
 						try {
@@ -218,6 +220,9 @@ export function createGrepToolDefinition(
 						if (literal) args.push("--fixed-strings");
 						if (glob) args.push("--glob", glob);
 						for (const excludeGlob of getRipgrepProjectConfigExcludeGlobs(searchPath, cwd)) {
+							args.push("--glob", excludeGlob);
+						}
+						for (const excludeGlob of getRipgrepArchitectureExcludeGlobs(searchPath, cwd)) {
 							args.push("--glob", excludeGlob);
 						}
 						args.push(pattern, searchPath);

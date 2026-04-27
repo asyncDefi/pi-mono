@@ -57,6 +57,8 @@ I regularly publish my own `pi-mono` work sessions here:
 - [Customization](#customization)
   - [Prompt Templates](#prompt-templates)
   - [Skills](#skills)
+  - [MCP](#mcp)
+  - [LLM Functions](#llm-functions)
   - [Extensions](#extensions)
   - [Themes](#themes)
   - [Pi Packages](#pi-packages)
@@ -328,6 +330,14 @@ Project MCP servers are configured in `.pi/mcp.json` and loaded on demand with t
 
 See [docs/mcp.md](docs/mcp.md).
 
+### LLM Functions
+
+Project-local specialist functions live under `.pi/llm-functions/<name>/` and run through the built-in `llm_function` tool. Each function has its own `INSTRUCTION.md`, exact `model.json`, and optional function-local `mcp.json`.
+
+Only one llm-function runs at a time. The built-in `review-code` layout is read-only and returns findings for the main agent to act on.
+
+See [docs/llm-functions.md](docs/llm-functions.md).
+
 ### Extensions
 
 <p align="center"><img src="docs/images/doom-extension.png" alt="Doom Extension" width="600"></p>
@@ -530,7 +540,7 @@ cat README.md | pi -p "Summarize this text"
 | `--tools <list>` | Enable specific built-in tools (default: `read,bash,edit,write`) |
 | `--no-tools` | Disable all built-in tools (extension tools still work) |
 
-Available built-in tools: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`, `skills_context`, `dont_destroy_notes`
+Available built-in tools: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`, `skills_context`, `mcp_context`, `architecture_context`, `llm_function`, `dont_destroy_notes`
 
 ### Resource Options
 

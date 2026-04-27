@@ -1,4 +1,9 @@
 export {
+	type ArchitectureContextToolInput,
+	createArchitectureContextTool,
+	createArchitectureContextToolDefinition,
+} from "./architecture-context.js";
+export {
 	type BashOperations,
 	type BashSpawnContext,
 	type BashSpawnHook,
@@ -39,6 +44,12 @@ export {
 	type GrepToolInput,
 	type GrepToolOptions,
 } from "./grep.js";
+export {
+	createLlmFunctionTool,
+	createLlmFunctionToolDefinition,
+	type LlmFunctionToolDetails,
+	type LlmFunctionToolInput,
+} from "./llm-function.js";
 export {
 	createLsTool,
 	createLsToolDefinition,
@@ -85,11 +96,13 @@ export {
 
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { ToolDefinition } from "../extensions/types.js";
+import { createArchitectureContextTool, createArchitectureContextToolDefinition } from "./architecture-context.js";
 import { type BashToolOptions, createBashTool, createBashToolDefinition } from "./bash.js";
 import { createDontDestroyNotesTool, createDontDestroyNotesToolDefinition } from "./dont-destroy-notes.js";
 import { createEditTool, createEditToolDefinition, type EditToolOptions } from "./edit.js";
 import { createFindTool, createFindToolDefinition, type FindToolOptions } from "./find.js";
 import { createGrepTool, createGrepToolDefinition, type GrepToolOptions } from "./grep.js";
+import { createLlmFunctionTool, createLlmFunctionToolDefinition } from "./llm-function.js";
 import { createLsTool, createLsToolDefinition, type LsToolOptions } from "./ls.js";
 import { createMcpContextTool, createMcpContextToolDefinition } from "./mcp-context.js";
 import { createReadTool, createReadToolDefinition, type ReadToolOptions } from "./read.js";
@@ -108,6 +121,8 @@ export type ToolName =
 	| "ls"
 	| "skills_context"
 	| "mcp_context"
+	| "architecture_context"
+	| "llm_function"
 	| "dont_destroy_notes";
 export const allToolNames: Set<ToolName> = new Set([
 	"read",
@@ -119,6 +134,8 @@ export const allToolNames: Set<ToolName> = new Set([
 	"ls",
 	"skills_context",
 	"mcp_context",
+	"architecture_context",
+	"llm_function",
 	"dont_destroy_notes",
 ]);
 
@@ -152,6 +169,10 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createSkillsContextToolDefinition();
 		case "mcp_context":
 			return createMcpContextToolDefinition();
+		case "architecture_context":
+			return createArchitectureContextToolDefinition();
+		case "llm_function":
+			return createLlmFunctionToolDefinition();
 		case "dont_destroy_notes":
 			return createDontDestroyNotesToolDefinition();
 		default:
@@ -179,6 +200,10 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createSkillsContextTool();
 		case "mcp_context":
 			return createMcpContextTool();
+		case "architecture_context":
+			return createArchitectureContextTool();
+		case "llm_function":
+			return createLlmFunctionTool();
 		case "dont_destroy_notes":
 			return createDontDestroyNotesTool();
 		default:
@@ -215,6 +240,8 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		ls: createLsToolDefinition(cwd, options?.ls),
 		skills_context: createSkillsContextToolDefinition(),
 		mcp_context: createMcpContextToolDefinition(),
+		architecture_context: createArchitectureContextToolDefinition(),
+		llm_function: createLlmFunctionToolDefinition(),
 		dont_destroy_notes: createDontDestroyNotesToolDefinition(),
 	};
 }
@@ -248,6 +275,8 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		ls: createLsTool(cwd, options?.ls),
 		skills_context: createSkillsContextTool(),
 		mcp_context: createMcpContextTool(),
+		architecture_context: createArchitectureContextTool(),
+		llm_function: createLlmFunctionTool(),
 		dont_destroy_notes: createDontDestroyNotesTool(),
 	};
 }

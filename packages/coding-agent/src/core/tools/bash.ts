@@ -17,6 +17,7 @@ import {
 	trackDetachedChildPid,
 	untrackDetachedChildPid,
 } from "../../utils/shell.js";
+import { assertBashCommandAllowedForArchitectureFile } from "../architecture.js";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
 import { assertBashCommandAllowedForProjectConfig } from "./project-config-access.js";
 import { getTextOutput, invalidArgText, str } from "./render-utils.js";
@@ -293,6 +294,7 @@ export function createBashToolDefinition(
 		) {
 			const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
 			const spawnContext = resolveSpawnContext(resolvedCommand, cwd, spawnHook);
+			assertBashCommandAllowedForArchitectureFile(spawnContext.command);
 			assertBashCommandAllowedForProjectConfig(spawnContext.command);
 			if (onUpdate) {
 				onUpdate({ content: [], details: undefined });

@@ -7,6 +7,12 @@ import { existsSync } from "fs";
 import path from "path";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
 import { ensureTool } from "../../utils/tools-manager.js";
+import {
+	assertPathAllowedForArchitectureFile,
+	getFdArchitectureExcludePatterns,
+	getFindCustomGlobArchitectureIgnores,
+	isArchitectureFilePath,
+} from "../architecture.js";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
 import { resolveToCwd } from "./path-utils.js";
 import {
@@ -156,6 +162,7 @@ export function createFindToolDefinition(
 				(async () => {
 					try {
 						const searchPath = resolveToCwd(searchDir || ".", cwd);
+						assertPathAllowedForArchitectureFile(searchPath, cwd, "read");
 						assertPathAllowedForProjectConfig(searchPath, cwd);
 						const effectiveLimit = limit ?? DEFAULT_LIMIT;
 						const ops = customOps ?? defaultFindOperations;
@@ -175,6 +182,7 @@ export function createFindToolDefinition(
 									"**/node_modules/**",
 									"**/.git/**",
 									...getFindCustomGlobProjectConfigIgnores(searchPath, cwd),
+									...getFindCustomGlobArchitectureIgnores(searchPath, cwd),
 								],
 								limit: effectiveLimit,
 							});
@@ -193,10 +201,23 @@ export function createFindToolDefinition(
 							}
 
 							// Relativize paths against the search root for stable output.
-							const relativized = results.map((p) => {
-								if (p.startsWith(searchPath)) return toPosixPath(p.slice(searchPath.length + 1));
-								return toPosixPath(path.relative(searchPath, p));
-							});
+							const relativized = results
+								.filter(
+									(p) => !isArchitectureFilePath(path.isAbsolute(p) ? p : path.resolve(searchPath, p), cwd),
+								)
+								.map((p) => {
+									if (p.startsWith(searchPath)) return toPosixPath(p.slice(searchPath.length + 1));
+									return toPosixPath(path.relative(searchPath, p));
+								});
+							if (relativized.length === 0) {
+								settle(() =>
+									resolve({
+										content: [{ type: "text", text: "No files found matching pattern" }],
+										details: undefined,
+									}),
+								);
+								return;
+							}
 							const resultLimitReached = relativized.length >= effectiveLimit;
 							const rawOutput = relativized.join("\n");
 							const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
@@ -246,6 +267,9 @@ export function createFindToolDefinition(
 							String(effectiveLimit),
 						];
 						for (const excludePattern of getFdProjectConfigExcludePatterns(searchPath, cwd)) {
+							args.push("-E", excludePattern);
+						}
+						for (const excludePattern of getFdArchitectureExcludePatterns(searchPath, cwd)) {
 							args.push("-E", excludePattern);
 						}
 
@@ -324,8 +348,18 @@ export function createFindToolDefinition(
 								} else {
 									relativePath = path.relative(searchPath, line);
 								}
+								if (isArchitectureFilePath(path.resolve(searchPath, relativePath), cwd)) continue;
 								if (hadTrailingSlash && !relativePath.endsWith("/")) relativePath += "/";
 								relativized.push(toPosixPath(relativePath));
+							}
+							if (relativized.length === 0) {
+								settle(() =>
+									resolve({
+										content: [{ type: "text", text: "No files found matching pattern" }],
+										details: undefined,
+									}),
+								);
+								return;
 							}
 
 							const resultLimitReached = relativized.length >= effectiveLimit;

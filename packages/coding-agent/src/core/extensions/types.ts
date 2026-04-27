@@ -41,6 +41,12 @@ import type {
 } from "@mariozechner/pi-tui";
 import type { Static, TSchema } from "@sinclair/typebox";
 import type { Theme } from "../../modes/interactive/theme/theme.js";
+import type {
+	ArchitectureContainer,
+	ArchitectureRelation,
+	ArchitectureScript,
+	ArchitectureStatus,
+} from "../architecture.js";
 import type { BashResult } from "../bash-executor.js";
 import type { CompactionPreparation, CompactionResult } from "../compaction/index.js";
 import type { EventBus } from "../event-bus.js";
@@ -330,6 +336,26 @@ export interface ExtensionContext {
 		listDiscovered: () => string[];
 		/** Get last N lifecycle events (newest last). */
 		history: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }>;
+	};
+	/**
+	 * Manage root architecture.json through structured graph actions.
+	 * Direct read/edit/write access to architecture.json is intentionally blocked by built-in file tools.
+	 */
+	architectureContext: {
+		init: () => Promise<{ created: boolean; path: string }>;
+		status: () => Promise<ArchitectureStatus>;
+		validate: () => Promise<{ valid: boolean; errors: string[] }>;
+		listSystems: () => Promise<string[]>;
+		get: (id: string) => Promise<string>;
+		load: (id: string) => Promise<{ loaded: boolean; alreadyLoaded: boolean }>;
+		unload: (id: string) => Promise<{ unloaded: boolean; wasLoaded: boolean }>;
+		listActive: () => string[];
+		history: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; id: string }>;
+		upsertSystem: (system: ArchitectureContainer) => Promise<void>;
+		upsertSubsystem: (parentId: string, subsystem: ArchitectureContainer) => Promise<void>;
+		upsertScript: (containerId: string, script: ArchitectureScript) => Promise<void>;
+		upsertRelation: (relation: ArchitectureRelation) => Promise<void>;
+		remove: (id: string) => Promise<{ removed: boolean }>;
 	};
 	/** Manage durable notes included in the system prompt (not compacted). */
 	dontDestroyNotes: {
@@ -1525,6 +1551,20 @@ export interface ExtensionContextActions {
 	mcpContextListActive: () => string[];
 	mcpContextListDiscovered: () => string[];
 	mcpContextHistory: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }>;
+	architectureContextInit: () => Promise<{ created: boolean; path: string }>;
+	architectureContextStatus: () => Promise<ArchitectureStatus>;
+	architectureContextValidate: () => Promise<{ valid: boolean; errors: string[] }>;
+	architectureContextListSystems: () => Promise<string[]>;
+	architectureContextGet: (id: string) => Promise<string>;
+	architectureContextLoad: (id: string) => Promise<{ loaded: boolean; alreadyLoaded: boolean }>;
+	architectureContextUnload: (id: string) => Promise<{ unloaded: boolean; wasLoaded: boolean }>;
+	architectureContextListActive: () => string[];
+	architectureContextHistory: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; id: string }>;
+	architectureContextUpsertSystem: (system: ArchitectureContainer) => Promise<void>;
+	architectureContextUpsertSubsystem: (parentId: string, subsystem: ArchitectureContainer) => Promise<void>;
+	architectureContextUpsertScript: (containerId: string, script: ArchitectureScript) => Promise<void>;
+	architectureContextUpsertRelation: (relation: ArchitectureRelation) => Promise<void>;
+	architectureContextRemove: (id: string) => Promise<{ removed: boolean }>;
 	dontDestroyNotesSet: (slot: number, text: string) => { set: boolean; truncated: boolean; limit: number };
 	dontDestroyNotesClear: (slot: number) => { cleared: boolean };
 	dontDestroyNotesClearAll: () => { cleared: boolean };

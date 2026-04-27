@@ -6,6 +6,12 @@ import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { ImageContent, Model } from "@mariozechner/pi-ai";
 import type { KeyId } from "@mariozechner/pi-tui";
 import { type Theme, theme } from "../../modes/interactive/theme/theme.js";
+import type {
+	ArchitectureContainer,
+	ArchitectureRelation,
+	ArchitectureScript,
+	ArchitectureStatus,
+} from "../architecture.js";
 import type { ResourceDiagnostic } from "../diagnostics.js";
 import type { KeybindingsConfig } from "../keybindings.js";
 import type { ModelRegistry } from "../model-registry.js";
@@ -262,6 +268,46 @@ export class ExtensionRunner {
 	private mcpContextListDiscoveredFn: () => string[] = () => [];
 	private mcpContextHistoryFn: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; name: string }> =
 		() => [];
+	private architectureContextInitFn: () => Promise<{ created: boolean; path: string }> = async () => ({
+		created: false,
+		path: "",
+	});
+	private architectureContextStatusFn: () => Promise<ArchitectureStatus> = async () => ({
+		path: "",
+		exists: false,
+		valid: false,
+		systemCount: 0,
+		relationCount: 0,
+		errors: [],
+	});
+	private architectureContextValidateFn: () => Promise<{ valid: boolean; errors: string[] }> = async () => ({
+		valid: false,
+		errors: [],
+	});
+	private architectureContextListSystemsFn: () => Promise<string[]> = async () => [];
+	private architectureContextGetFn: (id: string) => Promise<string> = async () => "";
+	private architectureContextLoadFn: (id: string) => Promise<{ loaded: boolean; alreadyLoaded: boolean }> =
+		async () => ({
+			loaded: false,
+			alreadyLoaded: false,
+		});
+	private architectureContextUnloadFn: (id: string) => Promise<{ unloaded: boolean; wasLoaded: boolean }> =
+		async () => ({
+			unloaded: false,
+			wasLoaded: false,
+		});
+	private architectureContextListActiveFn: () => string[] = () => [];
+	private architectureContextHistoryFn: () => Array<{ timestamp: string; action: "loaded" | "unloaded"; id: string }> =
+		() => [];
+	private architectureContextUpsertSystemFn: (system: ArchitectureContainer) => Promise<void> = async () => {};
+	private architectureContextUpsertSubsystemFn: (parentId: string, subsystem: ArchitectureContainer) => Promise<void> =
+		async () => {};
+	private architectureContextUpsertScriptFn: (containerId: string, script: ArchitectureScript) => Promise<void> =
+		async () => {};
+	private architectureContextUpsertRelationFn: (relation: ArchitectureRelation) => Promise<void> = async () => {};
+	private architectureContextRemoveFn: (id: string) => Promise<{ removed: boolean }> = async () => ({
+		removed: false,
+	});
 	private dontDestroyNotesSetFn: (slot: number, text: string) => { set: boolean; truncated: boolean; limit: number } =
 		() => ({ set: false, truncated: false, limit: 0 });
 	private dontDestroyNotesClearFn: (slot: number) => { cleared: boolean } = () => ({ cleared: false });
@@ -341,6 +387,20 @@ export class ExtensionRunner {
 		this.mcpContextListActiveFn = contextActions.mcpContextListActive;
 		this.mcpContextListDiscoveredFn = contextActions.mcpContextListDiscovered;
 		this.mcpContextHistoryFn = contextActions.mcpContextHistory;
+		this.architectureContextInitFn = contextActions.architectureContextInit;
+		this.architectureContextStatusFn = contextActions.architectureContextStatus;
+		this.architectureContextValidateFn = contextActions.architectureContextValidate;
+		this.architectureContextListSystemsFn = contextActions.architectureContextListSystems;
+		this.architectureContextGetFn = contextActions.architectureContextGet;
+		this.architectureContextLoadFn = contextActions.architectureContextLoad;
+		this.architectureContextUnloadFn = contextActions.architectureContextUnload;
+		this.architectureContextListActiveFn = contextActions.architectureContextListActive;
+		this.architectureContextHistoryFn = contextActions.architectureContextHistory;
+		this.architectureContextUpsertSystemFn = contextActions.architectureContextUpsertSystem;
+		this.architectureContextUpsertSubsystemFn = contextActions.architectureContextUpsertSubsystem;
+		this.architectureContextUpsertScriptFn = contextActions.architectureContextUpsertScript;
+		this.architectureContextUpsertRelationFn = contextActions.architectureContextUpsertRelation;
+		this.architectureContextRemoveFn = contextActions.architectureContextRemove;
 		this.dontDestroyNotesSetFn = contextActions.dontDestroyNotesSet;
 		this.dontDestroyNotesClearFn = contextActions.dontDestroyNotesClear;
 		this.dontDestroyNotesClearAllFn = contextActions.dontDestroyNotesClearAll;
@@ -655,6 +715,27 @@ export class ExtensionRunner {
 					listActive: () => runner.mcpContextListActiveFn(),
 					listDiscovered: () => runner.mcpContextListDiscoveredFn(),
 					history: () => runner.mcpContextHistoryFn(),
+				};
+			},
+			get architectureContext() {
+				runner.assertActive();
+				return {
+					init: () => runner.architectureContextInitFn(),
+					status: () => runner.architectureContextStatusFn(),
+					validate: () => runner.architectureContextValidateFn(),
+					listSystems: () => runner.architectureContextListSystemsFn(),
+					get: (id: string) => runner.architectureContextGetFn(id),
+					load: (id: string) => runner.architectureContextLoadFn(id),
+					unload: (id: string) => runner.architectureContextUnloadFn(id),
+					listActive: () => runner.architectureContextListActiveFn(),
+					history: () => runner.architectureContextHistoryFn(),
+					upsertSystem: (system: ArchitectureContainer) => runner.architectureContextUpsertSystemFn(system),
+					upsertSubsystem: (parentId: string, subsystem: ArchitectureContainer) =>
+						runner.architectureContextUpsertSubsystemFn(parentId, subsystem),
+					upsertScript: (containerId: string, script: ArchitectureScript) =>
+						runner.architectureContextUpsertScriptFn(containerId, script),
+					upsertRelation: (relation: ArchitectureRelation) => runner.architectureContextUpsertRelationFn(relation),
+					remove: (id: string) => runner.architectureContextRemoveFn(id),
 				};
 			},
 			get dontDestroyNotes() {

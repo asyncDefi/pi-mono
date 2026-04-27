@@ -25,6 +25,10 @@ export interface BuildSystemPromptOptions {
 	skills?: Skill[];
 	/** Pre-loaded MCP servers. */
 	mcpServers?: LoadedMcpServer[];
+	/** Loaded architecture graph context formatted for prompt injection. */
+	architectureContext?: string;
+	/** Discovered project-local llm-functions formatted for prompt injection. */
+	llmFunctionsContext?: string;
 	/** Persisted notes that must not be lost to compaction (7 slots). */
 	dontDestroyNotes?: Array<string | null>;
 }
@@ -59,6 +63,8 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 		contextFiles: providedContextFiles,
 		skills: providedSkills,
 		mcpServers: providedMcpServers,
+		architectureContext,
+		llmFunctionsContext,
 		dontDestroyNotes,
 	} = options;
 	const resolvedCwd = cwd;
@@ -108,6 +114,14 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 
 		if (mcpServers.length > 0) {
 			soul += formatMcpServersForPrompt(mcpServers);
+		}
+
+		if (architectureContext) {
+			soul += `\n\n${architectureContext}`;
+		}
+
+		if (llmFunctionsContext) {
+			soul += `\n\n${llmFunctionsContext}`;
 		}
 
 		// Add date and working directory last
@@ -161,6 +175,12 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 	addGuideline(
 		"Load/unload MCP servers with mcp_context (actions load, unload, list_active, list_discovered or list, history); MCP tools are available only while their server is loaded; after a successful load, each MCP tool is exposed like built-in tools with names mcp__<server>__<tool> (see mcp_context list_active for exact names)",
 	);
+	addGuideline(
+		"Use architecture_context for architecture.json: load relevant architecture before non-trivial system changes, update it after changing responsibilities, public surfaces, ownership, or logical interactions, and never read or edit architecture.json directly",
+	);
+	addGuideline(
+		"Use llm_function for configured project-local LLM functions such as review-code; wait for the tool result and incorporate its findings before continuing",
+	);
 	addGuideline("Use dont_destroy_notes to maintain short durable notes across compaction (7 slots, 2000 chars total)");
 
 	const guidelines = guidelinesList.map((g) => `- ${g}`).join("\n");
@@ -176,6 +196,7 @@ Pi documentation (read only when the user asks about pi itself, its SDK, extensi
 - Examples: ${examplesPath} (extensions, custom tools, SDK)
 - When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), MCP (docs/mcp.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md)
 - When working on pi topics, read the docs and examples, and follow .md cross-references before implementing
+- For llm-functions, read docs/llm-functions.md
 - Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)`;
 
 	if (appendSection) {
@@ -198,6 +219,14 @@ Pi documentation (read only when the user asks about pi itself, its SDK, extensi
 
 	if (mcpServers.length > 0) {
 		soul += formatMcpServersForPrompt(mcpServers);
+	}
+
+	if (architectureContext) {
+		soul += `\n\n${architectureContext}`;
+	}
+
+	if (llmFunctionsContext) {
+		soul += `\n\n${llmFunctionsContext}`;
 	}
 
 	// Add date and working directory last

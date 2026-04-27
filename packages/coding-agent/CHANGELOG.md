@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added the built-in `architecture_context` tool for managing a tracked root `architecture.json` graph, loading selected architecture slices into the system prompt, and blocking direct built-in tool access to that file.
+- Added project-local `llm_function` support via `.pi/llm-functions/<name>/`, including the read-only `review-code` function layout, exact per-function model config, function-local MCP config, and a main-agent prompt list of available functions.
 - Added first-class project MCP support via `.pi/mcp.json`, with `mcp_context` load/unload control so MCP tools are only exposed while their server is active
 - Added `structured-output.ts` extension example plus extension docs for terminating tool results, showing how a custom tool can return `terminate: true` so the agent ends on the tool call without an extra follow-up LLM turn ([#3525](https://github.com/badlogic/pi-mono/issues/3525))
 - Added OSC 9;4 terminal progress indicators during agent streaming and compaction, so terminals like iTerm2, WezTerm, Windows Terminal, and Kitty show activity in their tab bar

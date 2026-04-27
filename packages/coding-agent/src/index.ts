@@ -13,6 +13,17 @@ export {
 	parseSkillBlock,
 	type SessionStats,
 } from "./core/agent-session.js";
+export {
+	ARCHITECTURE_ACCESS_MESSAGE,
+	ARCHITECTURE_FILE_NAME,
+	ARCHITECTURE_READ_MESSAGE,
+	ARCHITECTURE_SCHEMA_VERSION,
+	ARCHITECTURE_UPDATE_MESSAGE,
+	type ArchitectureContainer,
+	type ArchitectureGraph,
+	type ArchitectureRelation,
+	type ArchitectureScript,
+} from "./core/architecture.js";
 // Auth and model registry
 export {
 	type ApiKeyCredential,
@@ -147,14 +158,30 @@ export {
 // Footer data provider (git branch + extension statuses - data not otherwise available to extensions)
 export type { ReadonlyFooterDataProvider } from "./core/footer-data-provider.js";
 export {
+	type DiscoverLlmFunctionsResult,
+	discoverLlmFunctions,
+	getLlmFunctionReadOnlyToolNames,
+	getLlmFunctionsDir,
+	type LlmFunctionConfig,
+	type LlmFunctionDiagnostic,
+	type LlmFunctionModelConfig,
+	type LlmFunctionReadOnlyToolName,
+	type LlmFunctionRunResult,
+	loadLlmFunction,
+	type RunLlmFunctionOptions,
+	runLlmFunction,
+} from "./core/llm-functions.js";
+export {
 	createMcpClient,
 	createMcpToolDefinition,
 	formatMcpServersForPrompt,
 	type LoadedMcpServer,
 	type LoadedMcpTool,
+	type LoadMcpServersFromConfigPathOptions,
 	type LoadMcpServersOptions,
 	type LoadMcpServersResult,
 	loadMcpServers,
+	loadMcpServersFromConfigPath,
 	type McpClient,
 	type McpClientFactory,
 	type McpHttpConfig,
@@ -252,16 +279,19 @@ export {
 export { createSyntheticSourceInfo } from "./core/source-info.js";
 // Tools
 export {
+	type ArchitectureContextToolInput,
 	type BashOperations,
 	type BashSpawnContext,
 	type BashSpawnHook,
 	type BashToolDetails,
 	type BashToolInput,
 	type BashToolOptions,
+	createArchitectureContextToolDefinition,
 	createBashToolDefinition,
 	createEditToolDefinition,
 	createFindToolDefinition,
 	createGrepToolDefinition,
+	createLlmFunctionToolDefinition,
 	createLocalBashOperations,
 	createLsToolDefinition,
 	createMcpContextToolDefinition,
@@ -282,6 +312,8 @@ export {
 	type GrepToolDetails,
 	type GrepToolInput,
 	type GrepToolOptions,
+	type LlmFunctionToolDetails,
+	type LlmFunctionToolInput,
 	type LsOperations,
 	type LsToolDetails,
 	type LsToolInput,

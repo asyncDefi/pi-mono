@@ -1,16 +1,23 @@
-import type { OAuthProviderInterface } from "@mariozechner/pi-ai";
 import { getOAuthProviders } from "@mariozechner/pi-ai/oauth";
 import { Container, getKeybindings, Spacer, TruncatedText } from "@mariozechner/pi-tui";
 import type { AuthStorage } from "../../../core/auth-storage.js";
 import { theme } from "../theme/theme.js";
 import { DynamicBorder } from "./dynamic-border.js";
 
+interface LoginProvider {
+	id: string;
+	name: string;
+	kind: "oauth" | "api_key";
+}
+
+const API_KEY_LOGIN_PROVIDERS: LoginProvider[] = [{ id: "ollama-cloud", name: "Ollama Cloud", kind: "api_key" }];
+
 /**
  * Component that renders an OAuth provider selector
  */
 export class OAuthSelectorComponent extends Container {
 	private listContainer: Container;
-	private allProviders: OAuthProviderInterface[] = [];
+	private allProviders: LoginProvider[] = [];
 	private selectedIndex: number = 0;
 	private mode: "login" | "logout";
 	private authStorage: AuthStorage;
@@ -30,7 +37,7 @@ export class OAuthSelectorComponent extends Container {
 		this.onSelectCallback = onSelect;
 		this.onCancelCallback = onCancel;
 
-		// Load all OAuth providers
+		// Load all login providers
 		this.loadProviders();
 
 		// Add top border
@@ -56,7 +63,10 @@ export class OAuthSelectorComponent extends Container {
 	}
 
 	private loadProviders(): void {
-		this.allProviders = getOAuthProviders();
+		const oauthProviders = getOAuthProviders().map((provider): LoginProvider => {
+			return { id: provider.id, name: provider.name, kind: "oauth" };
+		});
+		this.allProviders = [...oauthProviders, ...API_KEY_LOGIN_PROVIDERS];
 	}
 
 	private updateList(): void {
@@ -70,7 +80,7 @@ export class OAuthSelectorComponent extends Container {
 
 			// Check if user is logged in for this provider
 			const credentials = this.authStorage.get(provider.id);
-			const isLoggedIn = credentials?.type === "oauth";
+			const isLoggedIn = credentials?.type === provider.kind;
 			const statusIndicator = isLoggedIn ? theme.fg("success", " ✓ logged in") : "";
 
 			let line = "";
@@ -89,7 +99,7 @@ export class OAuthSelectorComponent extends Container {
 		// Show "no providers" if empty
 		if (this.allProviders.length === 0) {
 			const message =
-				this.mode === "login" ? "No OAuth providers available" : "No OAuth providers logged in. Use /login first.";
+				this.mode === "login" ? "No login providers available" : "No providers logged in. Use /login first.";
 			this.listContainer.addChild(new TruncatedText(theme.fg("muted", `  ${message}`), 0, 0));
 		}
 	}

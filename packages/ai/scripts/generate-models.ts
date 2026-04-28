@@ -765,6 +765,82 @@ async function generateModels() {
 
 	}
 
+	const zaiFallbackModels: Model<"openai-completions">[] = [
+		{
+			id: "glm-5",
+			name: "GLM-5",
+			api: "openai-completions",
+			provider: "zai",
+			baseUrl: "https://api.z.ai/api/coding/paas/v4",
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			compat: {
+				supportsDeveloperRole: false,
+				thinkingFormat: "zai",
+				zaiToolStream: true,
+			},
+			contextWindow: 131072,
+			maxTokens: 32768,
+		},
+		{
+			id: "glm-4.7-flash",
+			name: "GLM-4.7 Flash",
+			api: "openai-completions",
+			provider: "zai",
+			baseUrl: "https://api.z.ai/api/coding/paas/v4",
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			compat: {
+				supportsDeveloperRole: false,
+				thinkingFormat: "zai",
+				zaiToolStream: true,
+			},
+			contextWindow: 131072,
+			maxTokens: 32768,
+		},
+		{
+			id: "glm-4.6v",
+			name: "GLM-4.6V",
+			api: "openai-completions",
+			provider: "zai",
+			baseUrl: "https://api.z.ai/api/coding/paas/v4",
+			reasoning: true,
+			input: ["text", "image"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			compat: {
+				supportsDeveloperRole: false,
+				thinkingFormat: "zai",
+				zaiToolStream: true,
+			},
+			contextWindow: 131072,
+			maxTokens: 32768,
+		},
+		{
+			id: "glm-4.5-flash",
+			name: "GLM-4.5 Flash",
+			api: "openai-completions",
+			provider: "zai",
+			baseUrl: "https://api.z.ai/api/coding/paas/v4",
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			compat: {
+				supportsDeveloperRole: false,
+				thinkingFormat: "zai",
+			},
+			contextWindow: 131072,
+			maxTokens: 32768,
+		},
+	];
+
+	for (const fallback of zaiFallbackModels) {
+		if (!allModels.some((m) => m.provider === fallback.provider && m.id === fallback.id)) {
+			allModels.push(fallback);
+		}
+	}
+
 
 	// Add missing EU Opus 4.6 profile
 	if (!allModels.some((m) => m.provider === "amazon-bedrock" && m.id === "eu.anthropic.claude-opus-4-6-v1")) {
@@ -986,6 +1062,26 @@ async function generateModels() {
 		});
 	}
 
+	if (!allModels.some((m) => m.provider === "openai" && m.id === "gpt-5.5")) {
+		allModels.push({
+			id: "gpt-5.5",
+			name: "GPT-5.5",
+			api: "openai-responses",
+			baseUrl: "https://api.openai.com/v1",
+			provider: "openai",
+			reasoning: true,
+			input: ["text", "image"],
+			cost: {
+				input: 2.5,
+				output: 15,
+				cacheRead: 0.25,
+				cacheWrite: 0,
+			},
+			contextWindow: 272000,
+			maxTokens: 128000,
+		});
+	}
+
 	const minimaxDirectSupportedIds = new Set(["MiniMax-M2.7", "MiniMax-M2.7-highspeed"]);
 
 	for (const candidate of allModels) {
@@ -1112,6 +1208,18 @@ async function generateModels() {
 			maxTokens: CODEX_MAX_TOKENS,
 		},
 		{
+			id: "gpt-5.5",
+			name: "GPT-5.5",
+			api: "openai-codex-responses",
+			provider: "openai-codex",
+			baseUrl: CODEX_BASE_URL,
+			reasoning: true,
+			input: ["text", "image"],
+			cost: { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 0 },
+			contextWindow: CODEX_CONTEXT,
+			maxTokens: CODEX_MAX_TOKENS,
+		},
+		{
 			id: "gpt-5.3-codex-spark",
 			name: "GPT-5.3 Codex Spark",
 			api: "openai-codex-responses",
@@ -1125,6 +1233,58 @@ async function generateModels() {
 		},
 	];
 	allModels.push(...codexModels);
+
+	const ollamaCloudModels: Array<{
+		id: string;
+		name: string;
+		reasoning: boolean;
+		input: ("text" | "image")[];
+		contextWindow: number;
+	}> = [
+		{ id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", reasoning: true, input: ["text"], contextWindow: 1048576 },
+		{ id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", reasoning: true, input: ["text"], contextWindow: 1048576 },
+		{ id: "kimi-k2.6", name: "Kimi K2.6", reasoning: true, input: ["text", "image"], contextWindow: 262144 },
+		{ id: "glm-5.1", name: "GLM 5.1", reasoning: true, input: ["text"], contextWindow: 131072 },
+		{ id: "gemma4", name: "Gemma 4", reasoning: true, input: ["text", "image"], contextWindow: 131072 },
+		{ id: "gemma4:e2b", name: "Gemma 4 E2B", reasoning: true, input: ["text", "image"], contextWindow: 131072 },
+		{ id: "gemma4:e4b", name: "Gemma 4 E4B", reasoning: true, input: ["text", "image"], contextWindow: 131072 },
+		{ id: "gemma4:26b", name: "Gemma 4 26B", reasoning: true, input: ["text", "image"], contextWindow: 262144 },
+		{ id: "gemma4:31b", name: "Gemma 4 31B", reasoning: true, input: ["text", "image"], contextWindow: 262144 },
+		{ id: "qwen3.5", name: "Qwen 3.5", reasoning: true, input: ["text", "image"], contextWindow: 262144 },
+		{ id: "qwen3-coder-next", name: "Qwen3 Coder Next", reasoning: false, input: ["text"], contextWindow: 262144 },
+		{ id: "ministral-3", name: "Ministral 3", reasoning: false, input: ["text", "image"], contextWindow: 131072 },
+		{ id: "ministral-3:3b", name: "Ministral 3 3B", reasoning: false, input: ["text", "image"], contextWindow: 131072 },
+		{ id: "ministral-3:8b", name: "Ministral 3 8B", reasoning: false, input: ["text", "image"], contextWindow: 131072 },
+		{ id: "ministral-3:14b", name: "Ministral 3 14B", reasoning: false, input: ["text", "image"], contextWindow: 131072 },
+		{ id: "devstral-small-2", name: "Devstral Small 2", reasoning: false, input: ["text", "image"], contextWindow: 262144 },
+		{ id: "nemotron-3-super", name: "Nemotron 3 Super", reasoning: true, input: ["text"], contextWindow: 262144 },
+		{ id: "qwen3-next", name: "Qwen3 Next", reasoning: true, input: ["text"], contextWindow: 262144 },
+		{ id: "qwen3-next:80b", name: "Qwen3 Next 80B", reasoning: true, input: ["text"], contextWindow: 262144 },
+		{ id: "kimi-k2.5", name: "Kimi K2.5", reasoning: true, input: ["text", "image"], contextWindow: 262144 },
+		{ id: "rnj-1", name: "Rnj 1", reasoning: false, input: ["text"], contextWindow: 131072 },
+		{ id: "rnj-1:8b", name: "Rnj 1 8B", reasoning: false, input: ["text"], contextWindow: 131072 },
+		{ id: "minimax-m2.7", name: "MiniMax M2.7", reasoning: true, input: ["text"], contextWindow: 262144 },
+		{ id: "nemotron-3-nano", name: "Nemotron 3 Nano", reasoning: true, input: ["text"], contextWindow: 131072 },
+		{ id: "nemotron-3-nano:4b", name: "Nemotron 3 Nano 4B", reasoning: true, input: ["text"], contextWindow: 131072 },
+		{ id: "nemotron-3-nano:30b", name: "Nemotron 3 Nano 30B", reasoning: true, input: ["text"], contextWindow: 131072 },
+		{ id: "glm-5", name: "GLM 5", reasoning: true, input: ["text"], contextWindow: 131072 },
+		{ id: "minimax-m2.5", name: "MiniMax M2.5", reasoning: true, input: ["text"], contextWindow: 262144 },
+		{ id: "devstral-2", name: "Devstral 2", reasoning: false, input: ["text"], contextWindow: 262144 },
+		{ id: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview", reasoning: true, input: ["text", "image"], contextWindow: 1048576 },
+		{ id: "cogito-2.1", name: "Cogito 2.1", reasoning: false, input: ["text"], contextWindow: 131072 },
+		{ id: "gpt-oss:120b", name: "GPT-OSS 120B", reasoning: true, input: ["text"], contextWindow: 131072 },
+		{ id: "gpt-oss:20b", name: "GPT-OSS 20B", reasoning: true, input: ["text"], contextWindow: 131072 },
+	];
+	allModels.push(
+		...ollamaCloudModels.map(model => ({
+			...model,
+			api: "ollama-chat" as const,
+			baseUrl: "https://ollama.com/api",
+			provider: "ollama-cloud" as const,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			maxTokens: Math.min(model.contextWindow, 32768),
+		})),
+	);
 
 	// Add missing Grok models
 	if (!allModels.some(m => m.provider === "xai" && m.id === "grok-code-fast-1")) {

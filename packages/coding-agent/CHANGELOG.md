@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added Ollama Cloud to `/login` and built-in model selection via stored `OLLAMA_API_KEY`, and updated OpenAI/OpenAI Codex defaults to GPT-5.5.
+- Added custom model ID selection from `/model provider/model-id` and the interactive model selector for authenticated providers.
 - Added the built-in `architecture_context` tool for managing a tracked root `architecture.json` graph, loading selected architecture slices into the system prompt, and blocking direct built-in tool access to that file.
 - Added project-local `llm_function` support via `.pi/llm-functions/<name>/`, including the read-only `review-code` function layout, exact per-function model config, function-local MCP config, and a main-agent prompt list of available functions.
 - Added first-class project MCP support via `.pi/mcp.json`, with `mcp_context` load/unload control so MCP tools are only exposed while their server is active

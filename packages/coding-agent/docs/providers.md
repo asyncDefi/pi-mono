@@ -68,6 +68,7 @@ pi
 | OpenCode Go | `OPENCODE_API_KEY` | `opencode-go` |
 | Hugging Face | `HF_TOKEN` | `huggingface` |
 | Fireworks | `FIREWORKS_API_KEY` | `fireworks` |
+| Ollama Cloud | `OLLAMA_API_KEY` | `ollama-cloud` |
 | Kimi For Coding | `KIMI_API_KEY` | `kimi-coding` |
 | MiniMax | `MINIMAX_API_KEY` | `minimax` |
 | MiniMax (China) | `MINIMAX_CN_API_KEY` | `minimax-cn` |
@@ -111,6 +112,15 @@ The `key` field supports three formats:
 OAuth credentials are also stored here after `/login` and managed automatically.
 
 ## Cloud Providers
+
+### Ollama Cloud
+
+```bash
+export OLLAMA_API_KEY=...
+pi --provider ollama-cloud --model gpt-oss:120b
+```
+
+Ollama Cloud uses Ollama's hosted API at `https://ollama.com/api`.
 
 ### Azure OpenAI
 

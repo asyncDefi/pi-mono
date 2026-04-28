@@ -12,6 +12,7 @@ export type { GoogleOptions } from "./providers/google.js";
 export type { GoogleGeminiCliOptions, GoogleThinkingLevel } from "./providers/google-gemini-cli.js";
 export type { GoogleVertexOptions } from "./providers/google-vertex.js";
 export type { MistralOptions } from "./providers/mistral.js";
+export type { OllamaChatOptions } from "./providers/ollama-chat.js";
 export type { OpenAICodexResponsesOptions } from "./providers/openai-codex-responses.js";
 export type { OpenAICompletionsOptions } from "./providers/openai-completions.js";
 export type { OpenAIResponsesOptions } from "./providers/openai-responses.js";

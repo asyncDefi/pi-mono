@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added direct Ollama Cloud provider support via Ollama's native chat API, including `OLLAMA_API_KEY` auth and built-in `gpt-oss:120b` / `gpt-oss:20b` model entries.
+- Added GPT-5.5 model metadata for OpenAI and OpenAI Codex providers.
+
 ## [0.68.1] - 2026-04-22
 
 ### Added

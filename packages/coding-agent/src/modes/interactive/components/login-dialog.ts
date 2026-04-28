@@ -5,6 +5,10 @@ import { theme } from "../theme/theme.js";
 import { DynamicBorder } from "./dynamic-border.js";
 import { keyHint } from "./keybinding-hints.js";
 
+const API_KEY_PROVIDER_NAMES: Record<string, string> = {
+	"ollama-cloud": "Ollama Cloud",
+};
+
 /**
  * Login dialog component - replaces editor during OAuth login flow
  */
@@ -35,7 +39,7 @@ export class LoginDialogComponent extends Container implements Focusable {
 		this.tui = tui;
 
 		const providerInfo = getOAuthProviders().find((p) => p.id === providerId);
-		const providerName = providerInfo?.name || providerId;
+		const providerName = providerInfo?.name || API_KEY_PROVIDER_NAMES[providerId] || providerId;
 
 		// Top border
 		this.addChild(new DynamicBorder());

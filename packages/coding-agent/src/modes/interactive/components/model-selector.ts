@@ -19,6 +19,7 @@ interface ModelItem {
 	provider: string;
 	id: string;
 	model: Model<any>;
+	isCustom?: boolean;
 }
 
 interface ScopedModelItem {
@@ -223,8 +224,43 @@ export class ModelSelectorComponent extends Container implements Focusable {
 					({ id, provider }) => `${id} ${provider} ${provider}/${id} ${provider} ${id}`,
 				)
 			: this.activeModels;
+		const customModel = this.buildCustomModelItem(query);
+		if (customModel) {
+			this.filteredModels = [customModel, ...this.filteredModels];
+		}
 		this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, this.filteredModels.length - 1));
 		this.updateList();
+	}
+
+	private buildCustomModelItem(query: string): ModelItem | undefined {
+		const trimmed = query.trim();
+		const slashIndex = trimmed.indexOf("/");
+		if (slashIndex <= 0 || slashIndex === trimmed.length - 1) {
+			return undefined;
+		}
+
+		const provider = trimmed.slice(0, slashIndex);
+		const modelId = trimmed.slice(slashIndex + 1);
+		const providerModels = this.activeModels.filter((item) => item.provider.toLowerCase() === provider.toLowerCase());
+		if (providerModels.length === 0) {
+			return undefined;
+		}
+		if (providerModels.some((item) => item.id.toLowerCase() === modelId.toLowerCase())) {
+			return undefined;
+		}
+
+		const baseModel =
+			providerModels.find((item) => modelsAreEqual(this.currentModel, item.model)) ?? providerModels[0];
+		return {
+			provider: baseModel.provider,
+			id: modelId,
+			model: {
+				...baseModel.model,
+				id: modelId,
+				name: modelId,
+			},
+			isCustom: true,
+		};
 	}
 
 	private updateList(): void {
@@ -248,12 +284,12 @@ export class ModelSelectorComponent extends Container implements Focusable {
 			let line = "";
 			if (isSelected) {
 				const prefix = theme.fg("accent", "→ ");
-				const modelText = `${item.id}`;
+				const modelText = item.isCustom ? `Use custom model: ${item.id}` : `${item.id}`;
 				const providerBadge = theme.fg("muted", `[${item.provider}]`);
 				const checkmark = isCurrent ? theme.fg("success", " ✓") : "";
 				line = `${prefix + theme.fg("accent", modelText)} ${providerBadge}${checkmark}`;
 			} else {
-				const modelText = `  ${item.id}`;
+				const modelText = item.isCustom ? `  Use custom model: ${item.id}` : `  ${item.id}`;
 				const providerBadge = theme.fg("muted", `[${item.provider}]`);
 				const checkmark = isCurrent ? theme.fg("success", " ✓") : "";
 				line = `${modelText} ${providerBadge}${checkmark}`;

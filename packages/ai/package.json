@@ -34,6 +34,10 @@
 			"types": "./dist/providers/mistral.d.ts",
 			"import": "./dist/providers/mistral.js"
 		},
+		"./ollama-chat": {
+			"types": "./dist/providers/ollama-chat.d.ts",
+			"import": "./dist/providers/ollama-chat.js"
+		},
 		"./openai-codex-responses": {
 			"types": "./dist/providers/openai-codex-responses.d.ts",
 			"import": "./dist/providers/openai-codex-responses.js"

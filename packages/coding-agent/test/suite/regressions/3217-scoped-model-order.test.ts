@@ -101,4 +101,36 @@ describe("issue #3217 scoped model ordering", () => {
 
 		expect(orderedIds).toEqual([modelTwo.id, modelOne.id, modelThree.id]);
 	});
+
+	it("allows selecting a custom model id for an available provider", async () => {
+		const harness = await createHarness({
+			models: [{ id: "faux-1", name: "One", reasoning: true }],
+		});
+		harnesses.push(harness);
+
+		const baseModel = harness.getModel("faux-1")!;
+		let selectedModel: typeof baseModel | undefined;
+		const selector = new ModelSelectorComponent(
+			createFakeTui(),
+			baseModel,
+			harness.settingsManager,
+			harness.session.modelRegistry,
+			[],
+			(model) => {
+				selectedModel = model;
+			},
+			() => {},
+			`${baseModel.provider}/faux-custom`,
+		);
+
+		await waitForAsyncRender();
+		const rendered = stripAnsi(selector.render(120).join("\n"));
+		expect(rendered).toContain("Use custom model: faux-custom");
+
+		selector.handleInput("\r");
+
+		expect(selectedModel?.provider).toBe(baseModel.provider);
+		expect(selectedModel?.id).toBe("faux-custom");
+		expect(selectedModel?.api).toBe(baseModel.api);
+	});
 });

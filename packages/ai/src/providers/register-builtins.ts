@@ -17,6 +17,7 @@ import type { GoogleOptions } from "./google.js";
 import type { GoogleGeminiCliOptions } from "./google-gemini-cli.js";
 import type { GoogleVertexOptions } from "./google-vertex.js";
 import type { MistralOptions } from "./mistral.js";
+import type { OllamaChatOptions } from "./ollama-chat.js";
 import type { OpenAICodexResponsesOptions } from "./openai-codex-responses.js";
 import type { OpenAICompletionsOptions } from "./openai-completions.js";
 import type { OpenAIResponsesOptions } from "./openai-responses.js";
@@ -69,6 +70,11 @@ interface OpenAICodexResponsesProviderModule {
 	streamSimpleOpenAICodexResponses: StreamFunction<"openai-codex-responses", SimpleStreamOptions>;
 }
 
+interface OllamaChatProviderModule {
+	streamOllamaChat: StreamFunction<"ollama-chat", OllamaChatOptions>;
+	streamSimpleOllamaChat: StreamFunction<"ollama-chat", SimpleStreamOptions>;
+}
+
 interface OpenAICompletionsProviderModule {
 	streamOpenAICompletions: StreamFunction<"openai-completions", OpenAICompletionsOptions>;
 	streamSimpleOpenAICompletions: StreamFunction<"openai-completions", SimpleStreamOptions>;
@@ -114,6 +120,9 @@ let mistralProviderModulePromise:
 	| undefined;
 let openAICodexResponsesProviderModulePromise:
 	| Promise<LazyProviderModule<"openai-codex-responses", OpenAICodexResponsesOptions, SimpleStreamOptions>>
+	| undefined;
+let ollamaChatProviderModulePromise:
+	| Promise<LazyProviderModule<"ollama-chat", OllamaChatOptions, SimpleStreamOptions>>
 	| undefined;
 let openAICompletionsProviderModulePromise:
 	| Promise<LazyProviderModule<"openai-completions", OpenAICompletionsOptions, SimpleStreamOptions>>
@@ -300,6 +309,19 @@ function loadOpenAICodexResponsesProviderModule(): Promise<
 	return openAICodexResponsesProviderModulePromise;
 }
 
+function loadOllamaChatProviderModule(): Promise<
+	LazyProviderModule<"ollama-chat", OllamaChatOptions, SimpleStreamOptions>
+> {
+	ollamaChatProviderModulePromise ||= import("./ollama-chat.js").then((module) => {
+		const provider = module as OllamaChatProviderModule;
+		return {
+			stream: provider.streamOllamaChat,
+			streamSimple: provider.streamSimpleOllamaChat,
+		};
+	});
+	return ollamaChatProviderModulePromise;
+}
+
 function loadOpenAICompletionsProviderModule(): Promise<
 	LazyProviderModule<"openai-completions", OpenAICompletionsOptions, SimpleStreamOptions>
 > {
@@ -356,6 +378,8 @@ export const streamMistral = createLazyStream(loadMistralProviderModule);
 export const streamSimpleMistral = createLazySimpleStream(loadMistralProviderModule);
 export const streamOpenAICodexResponses = createLazyStream(loadOpenAICodexResponsesProviderModule);
 export const streamSimpleOpenAICodexResponses = createLazySimpleStream(loadOpenAICodexResponsesProviderModule);
+export const streamOllamaChat = createLazyStream(loadOllamaChatProviderModule);
+export const streamSimpleOllamaChat = createLazySimpleStream(loadOllamaChatProviderModule);
 export const streamOpenAICompletions = createLazyStream(loadOpenAICompletionsProviderModule);
 export const streamSimpleOpenAICompletions = createLazySimpleStream(loadOpenAICompletionsProviderModule);
 export const streamOpenAIResponses = createLazyStream(loadOpenAIResponsesProviderModule);
@@ -398,6 +422,12 @@ export function registerBuiltInApiProviders(): void {
 		api: "openai-codex-responses",
 		stream: streamOpenAICodexResponses,
 		streamSimple: streamSimpleOpenAICodexResponses,
+	});
+
+	registerApiProvider({
+		api: "ollama-chat",
+		stream: streamOllamaChat,
+		streamSimple: streamSimpleOllamaChat,
 	});
 
 	registerApiProvider({

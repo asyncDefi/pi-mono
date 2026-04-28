@@ -62,7 +62,12 @@ import type {
 import { FooterDataProvider, type ReadonlyFooterDataProvider } from "../../core/footer-data-provider.js";
 import { type AppKeybinding, KeybindingsManager } from "../../core/keybindings.js";
 import { createCompactionSummaryMessage } from "../../core/messages.js";
-import { defaultModelPerProvider, findExactModelReferenceMatch, resolveModelScope } from "../../core/model-resolver.js";
+import {
+	defaultModelPerProvider,
+	findExactModelReferenceMatch,
+	resolveCliModel,
+	resolveModelScope,
+} from "../../core/model-resolver.js";
 import { DefaultPackageManager } from "../../core/package-manager.js";
 import type { ResourceDiagnostic } from "../../core/resource-loader.js";
 import { formatMissingSessionCwdPrompt, MissingSessionCwdError } from "../../core/session-cwd.js";
@@ -165,6 +170,14 @@ function isUnknownModel(model: Model<any> | undefined): boolean {
 
 function hasDefaultModelProvider(providerId: string): providerId is keyof typeof defaultModelPerProvider {
 	return providerId in defaultModelPerProvider;
+}
+
+const API_KEY_LOGIN_PROVIDER_NAMES: Record<string, string> = {
+	"ollama-cloud": "Ollama Cloud",
+};
+
+function isApiKeyLoginProvider(providerId: string): boolean {
+	return providerId in API_KEY_LOGIN_PROVIDER_NAMES;
 }
 
 /**
@@ -3172,6 +3185,7 @@ export class InteractiveMode {
 		if (this.isShuttingDown) return;
 		this.isShuttingDown = true;
 		this.unregisterSignalHandlers();
+		await this.settingsManager.flush();
 		await this.runtimeHost.dispose();
 
 		// Wait for any pending renders to complete
@@ -3817,9 +3831,11 @@ export class InteractiveMode {
 		if (model) {
 			try {
 				await this.session.setModel(model);
+				this.settingsManager.setDefaultModelAndProvider(model.provider, model.id);
+				await this.settingsManager.flush();
 				this.footer.invalidate();
 				this.updateEditorBorderColor();
-				this.showStatus(`Model: ${model.id}`);
+				this.showStatus(`Model: ${model.id} saved to settings`);
 				void this.maybeWarnAboutAnthropicSubscriptionAuth(model);
 				this.checkDaxnutsEasterEgg(model);
 			} catch (error) {
@@ -3833,7 +3849,18 @@ export class InteractiveMode {
 
 	private async findExactModelMatch(searchTerm: string): Promise<Model<any> | undefined> {
 		const models = await this.getModelCandidates();
-		return findExactModelReferenceMatch(searchTerm, models);
+		const exactMatch = findExactModelReferenceMatch(searchTerm, models);
+		if (exactMatch) {
+			return exactMatch;
+		}
+
+		const resolved = resolveCliModel({
+			cliModel: searchTerm,
+			modelRegistry: {
+				getAll: () => models,
+			} as Parameters<typeof resolveCliModel>[0]["modelRegistry"],
+		});
+		return resolved.model;
 	}
 
 	private async getModelCandidates(): Promise<Model<any>[]> {
@@ -3896,10 +3923,11 @@ export class InteractiveMode {
 				async (model) => {
 					try {
 						await this.session.setModel(model);
+						await this.settingsManager.flush();
 						this.footer.invalidate();
 						this.updateEditorBorderColor();
 						done();
-						this.showStatus(`Model: ${model.id}`);
+						this.showStatus(`Model: ${model.id} saved to settings`);
 						void this.maybeWarnAboutAnthropicSubscriptionAuth(model);
 						this.checkDaxnutsEasterEgg(model);
 					} catch (error) {
@@ -3975,13 +4003,14 @@ export class InteractiveMode {
 					onChange: async (enabledIds) => {
 						await updateSessionModels(enabledIds);
 					},
-					onPersist: (enabledIds) => {
+					onPersist: async (enabledIds) => {
 						// Persist to settings
 						const newPatterns =
 							enabledIds === null || enabledIds.length === allModels.length
 								? undefined // All enabled = clear filter
 								: enabledIds;
 						this.settingsManager.setEnabledModels(newPatterns ? [...newPatterns] : undefined);
+						await this.settingsManager.flush();
 						this.showStatus("Model selection saved to settings");
 					},
 					onCancel: () => {
@@ -4311,7 +4340,7 @@ export class InteractiveMode {
 
 	private async showLoginDialog(providerId: string): Promise<void> {
 		const providerInfo = this.session.modelRegistry.authStorage.getOAuthProviders().find((p) => p.id === providerId);
-		const providerName = providerInfo?.name || providerId;
+		const providerName = providerInfo?.name || API_KEY_LOGIN_PROVIDER_NAMES[providerId] || providerId;
 		const previousModel = this.session.model;
 
 		// Providers that use callback servers (can paste redirect URL)
@@ -4345,45 +4374,54 @@ export class InteractiveMode {
 		};
 
 		try {
-			await this.session.modelRegistry.authStorage.login(providerId as OAuthProviderId, {
-				onAuth: (info: { url: string; instructions?: string }) => {
-					dialog.showAuth(info.url, info.instructions);
+			if (isApiKeyLoginProvider(providerId)) {
+				const apiKey = await dialog.showPrompt(`Paste ${providerName} API key:`, "ollama_...");
+				const trimmedApiKey = apiKey.trim();
+				if (!trimmedApiKey) {
+					throw new Error("API key is required");
+				}
+				this.session.modelRegistry.authStorage.set(providerId, { type: "api_key", key: trimmedApiKey });
+			} else {
+				await this.session.modelRegistry.authStorage.login(providerId as OAuthProviderId, {
+					onAuth: (info: { url: string; instructions?: string }) => {
+						dialog.showAuth(info.url, info.instructions);
 
-					if (usesCallbackServer) {
-						// Show input for manual paste, racing with callback
-						dialog
-							.showManualInput("Paste redirect URL below, or complete login in browser:")
-							.then((value) => {
-								if (value && manualCodeResolve) {
-									manualCodeResolve(value);
-									manualCodeResolve = undefined;
-								}
-							})
-							.catch(() => {
-								if (manualCodeReject) {
-									manualCodeReject(new Error("Login cancelled"));
-									manualCodeReject = undefined;
-								}
-							});
-					} else if (providerId === "github-copilot") {
-						// GitHub Copilot polls after onAuth
-						dialog.showWaiting("Waiting for browser authentication...");
-					}
-					// For Anthropic: onPrompt is called immediately after
-				},
+						if (usesCallbackServer) {
+							// Show input for manual paste, racing with callback
+							dialog
+								.showManualInput("Paste redirect URL below, or complete login in browser:")
+								.then((value) => {
+									if (value && manualCodeResolve) {
+										manualCodeResolve(value);
+										manualCodeResolve = undefined;
+									}
+								})
+								.catch(() => {
+									if (manualCodeReject) {
+										manualCodeReject(new Error("Login cancelled"));
+										manualCodeReject = undefined;
+									}
+								});
+						} else if (providerId === "github-copilot") {
+							// GitHub Copilot polls after onAuth
+							dialog.showWaiting("Waiting for browser authentication...");
+						}
+						// For Anthropic: onPrompt is called immediately after
+					},
 
-				onPrompt: async (prompt: { message: string; placeholder?: string }) => {
-					return dialog.showPrompt(prompt.message, prompt.placeholder);
-				},
+					onPrompt: async (prompt: { message: string; placeholder?: string }) => {
+						return dialog.showPrompt(prompt.message, prompt.placeholder);
+					},
 
-				onProgress: (message: string) => {
-					dialog.showProgress(message);
-				},
+					onProgress: (message: string) => {
+						dialog.showProgress(message);
+					},
 
-				onManualCodeInput: () => manualCodePromise,
+					onManualCodeInput: () => manualCodePromise,
 
-				signal: dialog.signal,
-			});
+					signal: dialog.signal,
+				});
+			}
 
 			// Success
 			restoreEditor();

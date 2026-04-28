@@ -24,6 +24,7 @@ import {
 	createLsTool,
 	createReadOnlyTools,
 	createReadTool,
+	createWebSearchTool,
 	createWriteTool,
 	type ToolName,
 	withFileMutationQueue,
@@ -108,6 +109,7 @@ export {
 	createGrepTool,
 	createFindTool,
 	createLsTool,
+	createWebSearchTool,
 };
 
 // Helper Functions

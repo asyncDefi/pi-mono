@@ -331,6 +331,7 @@ ${chalk.bold("Built-in Tool Names:")}
   grep   - Search file contents (read-only, off by default)
   find   - Find files by glob pattern (read-only, off by default)
   ls     - List directory contents (read-only, off by default)
+  web_search - Fetch/search allowed web URLs from .pi/allowedDomains.json
   architecture_context - Manage architecture.json graph context
   llm_function - Run project-local .pi/llm-functions/<name> functions
 `);

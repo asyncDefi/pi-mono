@@ -87,6 +87,15 @@ export {
 	truncateTail,
 } from "./truncate.js";
 export {
+	createWebSearchTool,
+	createWebSearchToolDefinition,
+	isDomainAllowed,
+	parseAllowedDomainsConfig,
+	type WebSearchOperations,
+	type WebSearchToolDetails,
+	type WebSearchToolInput,
+} from "./web-search.js";
+export {
 	createWriteTool,
 	createWriteToolDefinition,
 	type WriteOperations,
@@ -107,6 +116,7 @@ import { createLsTool, createLsToolDefinition, type LsToolOptions } from "./ls.j
 import { createMcpContextTool, createMcpContextToolDefinition } from "./mcp-context.js";
 import { createReadTool, createReadToolDefinition, type ReadToolOptions } from "./read.js";
 import { createSkillsContextTool, createSkillsContextToolDefinition } from "./skills-context.js";
+import { createWebSearchTool, createWebSearchToolDefinition } from "./web-search.js";
 import { createWriteTool, createWriteToolDefinition, type WriteToolOptions } from "./write.js";
 
 export type Tool = AgentTool<any>;
@@ -123,7 +133,8 @@ export type ToolName =
 	| "mcp_context"
 	| "architecture_context"
 	| "llm_function"
-	| "dont_destroy_notes";
+	| "dont_destroy_notes"
+	| "web_search";
 export const allToolNames: Set<ToolName> = new Set([
 	"read",
 	"bash",
@@ -137,6 +148,7 @@ export const allToolNames: Set<ToolName> = new Set([
 	"architecture_context",
 	"llm_function",
 	"dont_destroy_notes",
+	"web_search",
 ]);
 
 export interface ToolsOptions {
@@ -175,6 +187,8 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createLlmFunctionToolDefinition();
 		case "dont_destroy_notes":
 			return createDontDestroyNotesToolDefinition();
+		case "web_search":
+			return createWebSearchToolDefinition(cwd);
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -206,6 +220,8 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createLlmFunctionTool();
 		case "dont_destroy_notes":
 			return createDontDestroyNotesTool();
+		case "web_search":
+			return createWebSearchTool(cwd);
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -243,6 +259,7 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		architecture_context: createArchitectureContextToolDefinition(),
 		llm_function: createLlmFunctionToolDefinition(),
 		dont_destroy_notes: createDontDestroyNotesToolDefinition(),
+		web_search: createWebSearchToolDefinition(cwd),
 	};
 }
 
@@ -278,5 +295,6 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		architecture_context: createArchitectureContextTool(),
 		llm_function: createLlmFunctionTool(),
 		dont_destroy_notes: createDontDestroyNotesTool(),
+		web_search: createWebSearchTool(cwd),
 	};
 }

@@ -255,10 +255,11 @@ async function streamAssistantResponse(
 
 	// Build LLM context (prefer live system prompt so mid-run tool updates are visible)
 	const systemPrompt = config.getLiveSystemPrompt?.() ?? context.systemPrompt;
+	const tools = config.getLiveTools?.() ?? context.tools;
 	const llmContext: Context = {
 		systemPrompt,
 		messages: llmMessages,
-		tools: context.tools,
+		tools,
 	};
 
 	const streamFunction = streamFn || streamSimple;
@@ -522,7 +523,8 @@ async function prepareToolCall(
 	config: AgentLoopConfig,
 	signal: AbortSignal | undefined,
 ): Promise<PreparedToolCall | ImmediateToolCallOutcome> {
-	const tool = currentContext.tools?.find((t) => t.name === toolCall.name);
+	const tools = config.getLiveTools?.() ?? currentContext.tools;
+	const tool = tools?.find((t) => t.name === toolCall.name);
 	if (!tool) {
 		return {
 			kind: "immediate",

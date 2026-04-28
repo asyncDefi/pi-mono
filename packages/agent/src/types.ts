@@ -163,6 +163,12 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	getLiveSystemPrompt?: () => string;
 
 	/**
+	 * When set, called before each LLM request and tool execution lookup to obtain
+	 * the current tool set instead of the frozen {@link AgentContext.tools} snapshot.
+	 */
+	getLiveTools?: () => AgentTool<any>[];
+
+	/**
 	 * Resolves an API key dynamically for each LLM call.
 	 *
 	 * Useful for short-lived OAuth tokens (e.g., GitHub Copilot) that may expire

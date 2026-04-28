@@ -339,6 +339,105 @@ describe("agentLoop with AgentMessage", () => {
 		}
 	});
 
+	it("uses live tools added during the same run", async () => {
+		const loadSchema = Type.Object({});
+		const cubeSchema = Type.Object({ color: Type.String() });
+		const executed: string[] = [];
+		let liveTools: AgentTool<any>[] = [];
+
+		const cubeTool: AgentTool<typeof cubeSchema, { color: string }> = {
+			name: "mcp__Roblox_Studio__execute_luau",
+			label: "Execute Luau",
+			description: "Execute Luau in Roblox Studio",
+			parameters: cubeSchema,
+			async execute(_toolCallId, params) {
+				executed.push(params.color);
+				return {
+					content: [{ type: "text", text: `created ${params.color} cube` }],
+					details: params,
+				};
+			},
+		};
+
+		const loadTool: AgentTool<typeof loadSchema> = {
+			name: "mcp_context",
+			label: "MCP context",
+			description: "Load MCP servers",
+			parameters: loadSchema,
+			async execute() {
+				liveTools = [loadTool, cubeTool];
+				return {
+					content: [{ type: "text", text: `Tools: ${cubeTool.name}` }],
+					details: undefined,
+				};
+			},
+		};
+		liveTools = [loadTool];
+
+		const context: AgentContext = {
+			systemPrompt: "",
+			messages: [],
+			tools: [loadTool],
+		};
+		const config: AgentLoopConfig = {
+			model: createModel(),
+			convertToLlm: identityConverter,
+			getLiveTools: () => liveTools.slice(),
+		};
+
+		let callIndex = 0;
+		const providerToolNames: string[][] = [];
+		const streamFn = (_model: Model<any>, llmContext: Context) => {
+			providerToolNames.push(llmContext.tools?.map((tool) => tool.name) ?? []);
+			const stream = new MockAssistantStream();
+			queueMicrotask(() => {
+				if (callIndex === 0) {
+					stream.push({
+						type: "done",
+						reason: "toolUse",
+						message: createAssistantMessage(
+							[{ type: "toolCall", id: "tool-1", name: "mcp_context", arguments: {} }],
+							"toolUse",
+						),
+					});
+				} else if (callIndex === 1) {
+					stream.push({
+						type: "done",
+						reason: "toolUse",
+						message: createAssistantMessage(
+							[
+								{
+									type: "toolCall",
+									id: "tool-2",
+									name: "mcp__Roblox_Studio__execute_luau",
+									arguments: { color: "grey" },
+								},
+							],
+							"toolUse",
+						),
+					});
+				} else {
+					stream.push({
+						type: "done",
+						reason: "stop",
+						message: createAssistantMessage([{ type: "text", text: "done" }]),
+					});
+				}
+				callIndex++;
+			});
+			return stream;
+		};
+
+		const stream = agentLoop([createUserMessage("create a grey cube")], context, config, undefined, streamFn);
+		for await (const _event of stream) {
+			// consume
+		}
+
+		expect(providerToolNames[0]).toEqual(["mcp_context"]);
+		expect(providerToolNames[1]).toContain("mcp__Roblox_Studio__execute_luau");
+		expect(executed).toEqual(["grey"]);
+	});
+
 	it("should execute mutated beforeToolCall args without revalidation", async () => {
 		const toolSchema = Type.Object({ value: Type.String() });
 		const executed: Array<string | number> = [];

@@ -14,7 +14,7 @@ import {
 	isArchitectureFilePath,
 } from "../architecture.js";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
-import { resolveReadPath } from "./path-utils.js";
+import { assertPathInsideCwd, resolveReadPath } from "./path-utils.js";
 import { assertPathAllowedForProjectConfig } from "./project-config-access.js";
 import { getTextOutput, invalidArgText, replaceTabs, shortenPath, str } from "./render-utils.js";
 import { wrapToolDefinition } from "./tool-definition-wrapper.js";
@@ -145,6 +145,7 @@ export function createReadToolDefinition(
 			ctx?,
 		) {
 			const absolutePath = resolveReadPath(path, cwd);
+			assertPathInsideCwd(absolutePath, cwd);
 			if (isArchitectureFilePath(absolutePath, cwd)) {
 				return { content: [{ type: "text", text: ARCHITECTURE_READ_MESSAGE }], details: undefined };
 			}

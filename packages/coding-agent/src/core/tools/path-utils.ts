@@ -1,6 +1,6 @@
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, existsSync, realpathSync, statSync } from "node:fs";
 import * as os from "node:os";
-import { isAbsolute, resolve as resolvePath } from "node:path";
+import { dirname, isAbsolute, relative, resolve as resolvePath, sep } from "node:path";
 
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
 const NARROW_NO_BREAK_SPACE = "\u202F";
@@ -53,10 +53,67 @@ export function expandPath(filePath: string): string {
  */
 export function resolveToCwd(filePath: string, cwd: string): string {
 	const expanded = expandPath(filePath);
-	if (isAbsolute(expanded)) {
-		return expanded;
-	}
 	return resolvePath(cwd, expanded);
+}
+
+function realpathExistingTarget(absolutePath: string): string {
+	if (existsSync(absolutePath)) {
+		return realpathSync(absolutePath);
+	}
+
+	let current = absolutePath;
+	const missingSegments: string[] = [];
+	while (!existsSync(current)) {
+		const parent = dirname(current);
+		if (parent === current) {
+			return absolutePath;
+		}
+		missingSegments.unshift(current.slice(parent.length + (parent.endsWith(sep) ? 0 : 1)));
+		current = parent;
+	}
+
+	const stat = statSync(current);
+	const base = stat.isDirectory() ? realpathSync(current) : realpathSync(dirname(current));
+	return resolvePath(base, ...missingSegments);
+}
+
+function isSubpathOrSame(parent: string, child: string): boolean {
+	const relativePath = relative(parent, child);
+	return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
+}
+
+export function assertPathInsideCwd(absolutePath: string, cwd: string): void {
+	const realCwd = realpathExistingTarget(resolvePath(cwd));
+	const realTarget = realpathExistingTarget(resolvePath(absolutePath));
+	if (!isSubpathOrSame(realCwd, realTarget)) {
+		throw new Error(`Access outside the working directory is not allowed: ${absolutePath}`);
+	}
+}
+
+const BASH_BLOCKED_OUTSIDE_CWD_MESSAGE =
+	"This bash command was rejected because it appears to reference a path outside the working directory. " +
+	"Shell access to external files is not allowed; use paths under the session working directory.";
+
+const BASH_PATH_CANDIDATE_RE =
+	/(?:^|[\s"'=(;|&`])((?:~(?:[/\\][^\s"'`;|&()<>]*)?)|(?:(?:[A-Za-z]:[/\\]|\/)[^\s"'`;|&()<>]*)|(?:\.\.(?:[/\\][^\s"'`;|&()<>]*)?))(?:$|[\s"'):;|&`<>])/g;
+
+export function bashCommandReferencesPathOutsideCwd(command: string, cwd: string): boolean {
+	for (const match of command.matchAll(BASH_PATH_CANDIDATE_RE)) {
+		const candidate = match[1];
+		if (!candidate) continue;
+		try {
+			assertPathInsideCwd(resolveToCwd(candidate, cwd), cwd);
+		} catch {
+			return true;
+		}
+	}
+	return false;
+}
+
+export function assertBashCommandPathsInsideCwd(command: string, cwd: string): void {
+	if (bashCommandReferencesPathOutsideCwd(command, cwd)) {
+		throw new Error(BASH_BLOCKED_OUTSIDE_CWD_MESSAGE);
+	}
 }
 
 export function resolveReadPath(filePath: string, cwd: string): string {

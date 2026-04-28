@@ -13,6 +13,7 @@ import { join } from "node:path";
 import stripAnsi from "strip-ansi";
 import { sanitizeBinaryOutput } from "../utils/shell.js";
 import type { BashOperations } from "./tools/bash.js";
+import { assertBashCommandPathsInsideCwd } from "./tools/path-utils.js";
 import { assertBashCommandAllowedForProjectConfig } from "./tools/project-config-access.js";
 import { DEFAULT_MAX_BYTES, truncateTail } from "./tools/truncate.js";
 
@@ -55,6 +56,7 @@ export async function executeBashWithOperations(
 	options?: BashExecutorOptions,
 ): Promise<BashResult> {
 	assertBashCommandAllowedForProjectConfig(command);
+	assertBashCommandPathsInsideCwd(command, cwd);
 	const outputChunks: string[] = [];
 	let outputBytes = 0;
 	const maxOutputBytes = DEFAULT_MAX_BYTES * 2;

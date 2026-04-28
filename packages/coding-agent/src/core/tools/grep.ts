@@ -9,7 +9,7 @@ import { keyHint } from "../../modes/interactive/components/keybinding-hints.js"
 import { ensureTool } from "../../utils/tools-manager.js";
 import { assertPathAllowedForArchitectureFile, getRipgrepArchitectureExcludeGlobs } from "../architecture.js";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
-import { resolveToCwd } from "./path-utils.js";
+import { assertPathInsideCwd, resolveToCwd } from "./path-utils.js";
 import { assertPathAllowedForProjectConfig, getRipgrepProjectConfigExcludeGlobs } from "./project-config-access.js";
 import { getTextOutput, invalidArgText, shortenPath, str } from "./render-utils.js";
 import { wrapToolDefinition } from "./tool-definition-wrapper.js";
@@ -171,6 +171,7 @@ export function createGrepToolDefinition(
 				(async () => {
 					try {
 						const searchPath = resolveToCwd(searchDir || ".", cwd);
+						assertPathInsideCwd(searchPath, cwd);
 						assertPathAllowedForArchitectureFile(searchPath, cwd, "read");
 						assertPathAllowedForProjectConfig(searchPath, cwd);
 						const rgPath = await ensureTool("rg", true);

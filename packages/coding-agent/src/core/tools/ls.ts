@@ -5,7 +5,7 @@ import { existsSync, readdirSync, statSync } from "fs";
 import nodePath from "path";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.js";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
-import { resolveToCwd } from "./path-utils.js";
+import { assertPathInsideCwd, resolveToCwd } from "./path-utils.js";
 import { assertPathAllowedForProjectConfig } from "./project-config-access.js";
 import { getTextOutput, invalidArgText, shortenPath, str } from "./render-utils.js";
 import { wrapToolDefinition } from "./tool-definition-wrapper.js";
@@ -127,6 +127,7 @@ export function createLsToolDefinition(
 				(async () => {
 					try {
 						const dirPath = resolveToCwd(path || ".", cwd);
+						assertPathInsideCwd(dirPath, cwd);
 						assertPathAllowedForProjectConfig(dirPath, cwd);
 						const effectiveLimit = limit ?? DEFAULT_LIMIT;
 

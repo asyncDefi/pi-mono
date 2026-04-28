@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { executeBashWithOperations } from "../src/core/bash-executor.js";
 import { createBashTool, createLocalBashOperations } from "../src/core/tools/bash.js";
+import { bashCommandReferencesPathOutsideCwd } from "../src/core/tools/path-utils.js";
 import {
 	createEditTool,
 	createFindTool,
@@ -14,13 +15,13 @@ import {
 } from "../src/index.js";
 import * as shellModule from "../src/utils/shell.js";
 
-const readTool = createReadTool(process.cwd());
-const writeTool = createWriteTool(process.cwd());
-const editTool = createEditTool(process.cwd());
-const bashTool = createBashTool(process.cwd());
-const grepTool = createGrepTool(process.cwd());
-const findTool = createFindTool(process.cwd());
-const lsTool = createLsTool(process.cwd());
+let readTool = createReadTool(process.cwd());
+let writeTool = createWriteTool(process.cwd());
+let editTool = createEditTool(process.cwd());
+let bashTool = createBashTool(process.cwd());
+let grepTool = createGrepTool(process.cwd());
+let findTool = createFindTool(process.cwd());
+let lsTool = createLsTool(process.cwd());
 
 // Helper to extract text from content blocks
 function getTextOutput(result: any): string {
@@ -39,6 +40,13 @@ describe("Coding Agent Tools", () => {
 		// Create a unique temporary directory for each test
 		testDir = join(tmpdir(), `coding-agent-test-${Date.now()}`);
 		mkdirSync(testDir, { recursive: true });
+		readTool = createReadTool(testDir);
+		writeTool = createWriteTool(testDir);
+		editTool = createEditTool(testDir);
+		bashTool = createBashTool(testDir);
+		grepTool = createGrepTool(testDir);
+		findTool = createFindTool(testDir);
+		lsTool = createLsTool(testDir);
 	});
 
 	afterEach(() => {
@@ -64,6 +72,36 @@ describe("Coding Agent Tools", () => {
 			const testFile = join(testDir, "nonexistent.txt");
 
 			await expect(readTool.execute("test-call-2", { path: testFile })).rejects.toThrow(/ENOENT|not found/i);
+		});
+
+		it("should reject paths outside the working directory", async () => {
+			const outsideFile = join(tmpdir(), `coding-agent-outside-${Date.now()}.txt`);
+			writeFileSync(outsideFile, "secret");
+
+			try {
+				await expect(readTool.execute("test-call-outside-read", { path: outsideFile })).rejects.toThrow(
+					/Access outside the working directory is not allowed/,
+				);
+			} finally {
+				rmSync(outsideFile, { force: true });
+			}
+		});
+
+		it("should reject symlinks that resolve outside the working directory", async () => {
+			const outsideDir = join(tmpdir(), `coding-agent-outside-dir-${Date.now()}`);
+			const outsideFile = join(outsideDir, "secret.txt");
+			const linkPath = join(testDir, "outside-link");
+			mkdirSync(outsideDir, { recursive: true });
+			writeFileSync(outsideFile, "secret");
+			symlinkSync(outsideDir, linkPath, "junction");
+
+			try {
+				await expect(
+					readTool.execute("test-call-outside-symlink", { path: join(linkPath, "secret.txt") }),
+				).rejects.toThrow(/Access outside the working directory is not allowed/);
+			} finally {
+				rmSync(outsideDir, { recursive: true, force: true });
+			}
 		});
 
 		it("should truncate files exceeding line limit", async () => {
@@ -219,6 +257,12 @@ describe("Coding Agent Tools", () => {
 			const result = await writeTool.execute("test-call-4", { path: testFile, content });
 
 			expect(getTextOutput(result)).toContain("Successfully wrote");
+		});
+
+		it("should reject writes outside the working directory", async () => {
+			await expect(
+				writeTool.execute("test-call-outside-write", { path: join(testDir, "..", "outside.txt"), content: "no" }),
+			).rejects.toThrow(/Access outside the working directory is not allowed/);
 		});
 	});
 
@@ -480,6 +524,26 @@ describe("Coding Agent Tools", () => {
 			expect(result.output).toBe("red\n");
 		});
 
+		it("detects bash commands that reference paths outside cwd", () => {
+			expect(bashCommandReferencesPathOutsideCwd("cat /etc/passwd", testDir)).toBe(true);
+			expect(bashCommandReferencesPathOutsideCwd("ls ..", testDir)).toBe(true);
+			expect(bashCommandReferencesPathOutsideCwd("cat ~/secret.txt", testDir)).toBe(true);
+			expect(bashCommandReferencesPathOutsideCwd(`cat ${join(testDir, "inside.txt")}`, testDir)).toBe(false);
+			expect(bashCommandReferencesPathOutsideCwd("printf '\\033[31mred\\033[0m\\r\\n'", testDir)).toBe(false);
+		});
+
+		it("should reject commands that reference paths outside the working directory", async () => {
+			await expect(bashTool.execute("test-call-outside-bash", { command: "cat ../outside.txt" })).rejects.toThrow(
+				/rejected because it appears to reference a path outside the working directory/,
+			);
+		});
+
+		it("executeBashWithOperations should reject commands that reference paths outside cwd", async () => {
+			await expect(
+				executeBashWithOperations("cat /etc/passwd", testDir, createLocalBashOperations()),
+			).rejects.toThrow(/rejected because it appears to reference a path outside the working directory/);
+		});
+
 		it("should persist full output when truncation happens by line count only", async () => {
 			const bash = createBashTool(testDir);
 			const result = await bash.execute("test-call-line-truncation", { command: "seq 3000" });
@@ -624,6 +688,7 @@ describe("edit tool fuzzy matching", () => {
 	beforeEach(() => {
 		testDir = join(tmpdir(), `coding-agent-fuzzy-test-${Date.now()}`);
 		mkdirSync(testDir, { recursive: true });
+		editTool = createEditTool(testDir);
 	});
 
 	afterEach(() => {
@@ -800,6 +865,7 @@ describe("edit tool CRLF handling", () => {
 	beforeEach(() => {
 		testDir = join(tmpdir(), `coding-agent-crlf-test-${Date.now()}`);
 		mkdirSync(testDir, { recursive: true });
+		editTool = createEditTool(testDir);
 	});
 
 	afterEach(() => {

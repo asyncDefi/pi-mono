@@ -8,7 +8,7 @@ import { getLanguageFromPath, highlightCode } from "../../modes/interactive/them
 import { assertPathAllowedForArchitectureFile } from "../architecture.js";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
 import { withFileMutationQueue } from "./file-mutation-queue.js";
-import { resolveToCwd } from "./path-utils.js";
+import { assertPathInsideCwd, resolveToCwd } from "./path-utils.js";
 import { assertPathAllowedForProjectConfig } from "./project-config-access.js";
 import { invalidArgText, normalizeDisplayText, replaceTabs, shortenPath, str } from "./render-utils.js";
 import { wrapToolDefinition } from "./tool-definition-wrapper.js";
@@ -201,6 +201,7 @@ export function createWriteToolDefinition(
 			_ctx?,
 		) {
 			const absolutePath = resolveToCwd(path, cwd);
+			assertPathInsideCwd(absolutePath, cwd);
 			assertPathAllowedForArchitectureFile(absolutePath, cwd, "update");
 			assertPathAllowedForProjectConfig(absolutePath, cwd);
 			const dir = dirname(absolutePath);

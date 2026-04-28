@@ -14,7 +14,7 @@ import {
 	isArchitectureFilePath,
 } from "../architecture.js";
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
-import { resolveToCwd } from "./path-utils.js";
+import { assertPathInsideCwd, resolveToCwd } from "./path-utils.js";
 import {
 	assertPathAllowedForProjectConfig,
 	getFdProjectConfigExcludePatterns,
@@ -162,6 +162,7 @@ export function createFindToolDefinition(
 				(async () => {
 					try {
 						const searchPath = resolveToCwd(searchDir || ".", cwd);
+						assertPathInsideCwd(searchPath, cwd);
 						assertPathAllowedForArchitectureFile(searchPath, cwd, "read");
 						assertPathAllowedForProjectConfig(searchPath, cwd);
 						const effectiveLimit = limit ?? DEFAULT_LIMIT;
